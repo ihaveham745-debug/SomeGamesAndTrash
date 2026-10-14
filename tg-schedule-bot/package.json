@@ -1,0 +1,14 @@
+{
+  "name": "tg-schedule-bot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "deploy": "tgcloud push",
+    "status": "tgcloud status",
+    "run": "tgcloud run"
+  },
+  "devDependencies": {
+    "@tgcloud/cli": "^0.2.0"
+  }
+}
