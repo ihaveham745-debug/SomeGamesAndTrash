@@ -8,16 +8,33 @@ import { BELLS, SEMESTER_END, SEMESTER_START, TIMETABLE, UTC_OFFSET_HOURS } from
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAY_NAMES = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
+export const DAY_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const MONTHS = [
+  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+];
+const KEYCAPS = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
+const SHORT_TYPES = { лекция: 'лек.', практика: 'пр.' };
 
 export function parseDate(iso) {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d));
 }
 
+function local(nowMs) {
+  return new Date(nowMs + UTC_OFFSET_HOURS * 60 * 60 * 1000);
+}
+
 /** Сегодняшняя дата по местному времени университета. */
 export function today(nowMs = Date.now()) {
-  const local = new Date(nowMs + UTC_OFFSET_HOURS * 60 * 60 * 1000);
-  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
+  const now = local(nowMs);
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+/** Сколько минут прошло с местной полуночи. */
+export function minutesNow(nowMs = Date.now()) {
+  const now = local(nowMs);
+  return now.getUTCHours() * 60 + now.getUTCMinutes();
 }
 
 export function addDays(date, days) {
@@ -29,15 +46,15 @@ export function weekday(date) {
   return ((date.getUTCDay() + 6) % 7) + 1;
 }
 
-function isoDate(date) {
+export function isoDate(date) {
   return date.toISOString().slice(0, 10);
 }
 
-function ddmm(date) {
-  return `${String(date.getUTCDate()).padStart(2, '0')}.${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+export function ddmm(date) {
+  return `${pad(date.getUTCDate())}.${pad(date.getUTCMonth() + 1)}`;
 }
 
-function mondayOf(date) {
+export function mondayOf(date) {
   return addDays(date, 1 - weekday(date));
 }
 
@@ -60,6 +77,12 @@ function inSemester(date) {
   return iso >= SEMESTER_START && iso <= SEMESTER_END;
 }
 
+/** Есть ли в неделе с этой датой хоть один день семестра. */
+export function isSemesterWeek(date) {
+  const monday = mondayOf(date);
+  return isoDate(addDays(monday, 6)) >= SEMESTER_START && isoDate(monday) <= SEMESTER_END;
+}
+
 export function pairsFor(date) {
   if (!inSemester(date)) return [];
   const parity = isOddWeek(date) ? 'odd' : 'even';
@@ -70,66 +93,194 @@ export function pairsFor(date) {
     .sort((a, b) => a.n - b.n);
 }
 
-// --- Тексты (parse_mode: HTML) ---
+// --- Мелочи для текста ---
+
+function pad(n) {
+  return String(n).padStart(2, '0');
+}
+
+function hhmm(minutes) {
+  return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+}
+
+function capitalize(text) {
+  return text[0].toUpperCase() + text.slice(1);
+}
 
 function escapeHtml(text) {
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/** plural(3, 'пара', 'пары', 'пар') → 'пары'. */
+function plural(n, one, few, many) {
+  const n10 = n % 10;
+  const n100 = n % 100;
+  if (n10 === 1 && n100 !== 11) return one;
+  if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return few;
+  return many;
+}
+
+function duration(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return [h && `${h} ч`, m && `${m} мин`].filter(Boolean).join(' ');
+}
+
+/** '14 октября' */
+function dayMonth(date) {
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
+}
+
+/** '12–18 октября' или '28 сентября – 4 октября' */
+function dateRange(from, to) {
+  if (from.getUTCMonth() === to.getUTCMonth()) return `${from.getUTCDate()}–${dayMonth(to)}`;
+  return `${dayMonth(from)} – ${dayMonth(to)}`;
+}
+
+/** Время пары в минутах от полуночи: { start, end } или null, если звонков для неё нет. */
+function bell(n) {
+  const match = /^(\d\d):(\d\d)–(\d\d):(\d\d)$/.exec(BELLS[n] ?? '');
+  if (!match) return null;
+  const [h1, m1, h2, m2] = match.slice(1).map(Number);
+  return { start: h1 * 60 + m1, end: h2 * 60 + m2 };
+}
+
+function placeIcon(room) {
+  return /онлайн/i.test(room) ? '💻' : '📍';
+}
+
+function shortType(type) {
+  return type.split(', ').map((t) => SHORT_TYPES[t] ?? t).join(', ');
+}
+
+// --- Тексты (parse_mode: HTML) ---
+
 function outOfSemester(date) {
   if (isoDate(date) < SEMESTER_START) {
-    return `Семестр ещё не начался: занятия с ${ddmm(parseDate(SEMESTER_START))}.`;
+    return `🏖 Семестр ещё не начался — занятия с ${dayMonth(parseDate(SEMESTER_START))}.`;
   }
-  return 'Семестр закончился — расписание пора обновить 🙂';
+  return '🎓 Семестр закончился — расписание пора обновить.';
 }
 
 function weekLine(date) {
   return `${weekNumber(date)}-я неделя, ${parityWord(date)}`;
 }
 
-function pairBlock(p) {
-  const head = `<b>${p.n} пара</b>` + (BELLS[p.n] ? ` · ${BELLS[p.n]}` : '');
-  const subject = escapeHtml(p.subject) + (p.type ? ` <i>(${escapeHtml(p.type)})</i>` : '');
-  const details = [p.room && `📍 ${escapeHtml(p.room)}`, p.teacher && `👤 ${escapeHtml(p.teacher)}`].filter(Boolean);
-  return [head, subject, ...(details.length ? [details.join(' · ')] : [])].join('\n');
+function relativeDay(date, nowMs) {
+  const diff = Math.round((date.getTime() - today(nowMs).getTime()) / DAY_MS);
+  return { [-1]: 'Вчера', 0: 'Сегодня', 1: 'Завтра' }[diff];
 }
 
-export function formatDay(date, title) {
-  const header = `<b>${title}, ${DAY_NAMES[weekday(date) - 1]} ${ddmm(date)}</b>`;
-  if (!inSemester(date)) return `${header}\n${outOfSemester(date)}`;
+/** Что происходит прямо сейчас: идёт пара, перерыв или всё закончилось. */
+function nowLine(pairs, minutes) {
+  const slots = pairs.map((p) => ({ p, time: bell(p.n) })).filter((s) => s.time);
+  if (slots.length === 0) return null;
+
+  const current = slots.find((s) => minutes >= s.time.start && minutes < s.time.end);
+  if (current) {
+    return `🟢 Идёт ${current.p.n}-я пара, до ${hhmm(current.time.end)} — ещё ${duration(current.time.end - minutes)}`;
+  }
+  const next = slots.find((s) => minutes < s.time.start);
+  if (next) {
+    const which = next === slots[0] ? 'Первая пара' : 'Следующая пара';
+    return `⏳ ${which} в ${hhmm(next.time.start)} — через ${duration(next.time.start - minutes)}`;
+  }
+  return '✅ На сегодня пары закончились';
+}
+
+function pairCard(p, isNow) {
+  const head = [KEYCAPS[p.n] ?? `${p.n}.`, BELLS[p.n] && `<b>${BELLS[p.n]}</b>`, isNow && '← сейчас']
+    .filter(Boolean)
+    .join(' ');
+  const title = `<b>${escapeHtml(p.subject)}</b>` + (p.type ? ` · <i>${escapeHtml(p.type)}</i>` : '');
+  const details = [
+    p.room && `${placeIcon(p.room)} ${escapeHtml(p.room)}`,
+    p.teacher && `👤 ${escapeHtml(p.teacher)}`,
+  ].filter(Boolean);
+  return `<blockquote>${[head, title, ...(details.length ? [details.join('   ')] : [])].join('\n')}</blockquote>`;
+}
+
+/** «Окно» между парами: номера пар, которых нет, → время. */
+function gapLine(fromN, toN) {
+  const from = bell(fromN);
+  const to = bell(toN);
+  const time = from && to ? ` ${hhmm(from.start)}–${hhmm(to.end)}` : '';
+  return `<i>☕ окно${time}</i>`;
+}
+
+export function formatDay(date, nowMs = Date.now()) {
+  const label = relativeDay(date, nowMs);
+  const name = `${DAY_NAMES[weekday(date) - 1]}, ${dayMonth(date)}`;
+  const header = `📅 <b>${label ? `${label} · ${name}` : capitalize(name)}</b>`;
+  if (!inSemester(date)) return `${header}\n\n${outOfSemester(date)}`;
 
   const pairs = pairsFor(date);
-  const parts = [`${header}\n${weekLine(date)}`];
-  if (pairs.length === 0) parts.push('Пар нет 🎉');
-  for (const p of pairs) parts.push(pairBlock(p));
-  return parts.join('\n\n');
+  if (pairs.length === 0) return `${header}\n<i>${weekLine(date)}</i>\n\nПар нет — отдыхаем 🎉`;
+
+  const first = bell(pairs[0].n);
+  const last = bell(pairs[pairs.length - 1].n);
+  const span = first && last ? ` с ${hhmm(first.start)} до ${hhmm(last.end)}` : '';
+  const intro = [header, `<i>${weekLine(date)} · ${pairs.length} ${plural(pairs.length, 'пара', 'пары', 'пар')}${span}</i>`];
+
+  const isToday = label === 'Сегодня';
+  const minutes = minutesNow(nowMs);
+  const status = isToday && nowLine(pairs, minutes);
+  if (status) intro.push('', status);
+
+  const body = [];
+  pairs.forEach((p, i) => {
+    const prev = pairs[i - 1];
+    if (prev && p.n - prev.n > 1) body.push(gapLine(prev.n + 1, p.n - 1));
+    const time = bell(p.n);
+    body.push(pairCard(p, isToday && time && minutes >= time.start && minutes < time.end));
+  });
+
+  return `${intro.join('\n')}\n\n${body.join('\n')}`;
 }
 
-export function formatWeek(date) {
-  if (!inSemester(date)) return outOfSemester(date);
-
+export function formatWeek(date, nowMs = Date.now()) {
   const monday = mondayOf(date);
-  const parts = [`<b>${weekLine(date)}</b> (${ddmm(monday)}–${ddmm(addDays(monday, 6))})`];
+  const sunday = addDays(monday, 6);
+  if (!isSemesterWeek(monday)) {
+    return `🗓 <b>${dateRange(monday, sunday)}</b>\n\n${outOfSemester(monday)}`;
+  }
+
+  const todayMs = today(nowMs).getTime();
+  const parts = [`🗓 <b>${weekLine(monday)}</b>\n<i>${dateRange(monday, sunday)}</i>`];
   for (let i = 0; i < 7; i++) {
     const day = addDays(monday, i);
     const pairs = pairsFor(day);
     if (pairs.length === 0 && i === 6) continue; // пустое воскресенье не показываем
-    const name = DAY_NAMES[i][0].toUpperCase() + DAY_NAMES[i].slice(1);
-    const mark = day.getTime() === date.getTime() ? ' 👈 сегодня' : '';
-    const lines = [`<b>${name}, ${ddmm(day)}</b>${mark}`];
-    if (pairs.length === 0) lines.push('пар нет');
-    for (const p of pairs) {
-      let line = `${p.n}. ${BELLS[p.n] ? BELLS[p.n].split('–')[0] + ' ' : ''}${escapeHtml(p.subject)}`;
-      if (p.type) line += ` <i>(${escapeHtml(p.type)})</i>`;
-      if (p.room) line += ` · 📍 ${escapeHtml(p.room)}`;
-      lines.push(line);
+
+    const mark = day.getTime() === todayMs ? ' 👈 сегодня' : '';
+    const head = `<b>${capitalize(DAY_NAMES[i])}, ${dayMonth(day)}</b>${mark}`;
+    if (pairs.length === 0) {
+      parts.push(`${head}\n<i>пар нет</i>`);
+      continue;
     }
-    parts.push(lines.join('\n'));
+    const lines = pairs.map((p) => {
+      const time = bell(p.n);
+      let line = `${time ? `<b>${hhmm(time.start)}</b>` : `${p.n}.`} ${escapeHtml(p.subject)}`;
+      if (p.type) line += ` <i>${escapeHtml(shortType(p.type))}</i>`;
+      if (p.room) line += ` · ${placeIcon(p.room)} ${escapeHtml(p.room)}`;
+      return line;
+    });
+    parts.push(`${head}\n<blockquote>${lines.join('\n')}</blockquote>`);
   }
   return parts.join('\n\n');
 }
 
 export function formatParity(date) {
   if (!inSemester(date)) return outOfSemester(date);
-  return `Сейчас <b>${weekNumber(date)}-я неделя</b> — <b>${parityWord(date)}</b>.`;
+
+  const monday = mondayOf(date);
+  const lines = [
+    `🔢 Сейчас <b>${weekNumber(date)}-я неделя — ${parityWord(date)}</b>`,
+    `<i>${dateRange(monday, addDays(monday, 6))}</i>`,
+  ];
+  const next = addDays(monday, 7);
+  if (inSemester(next)) {
+    lines.push('', `Следующая (${dateRange(next, addDays(next, 6))}) — ${weekNumber(next)}-я, ${parityWord(next)}.`);
+  }
+  return lines.join('\n');
 }
