@@ -1,7 +1,9 @@
 // handlers/message — платформа вызывает его на каждое входящее сообщение.
 
 import { api } from 'sdk';
-import { COMMANDS, DESCRIPTION, SHORT_DESCRIPTION, actionFor, commandMention, replyTo } from '../lib/bot.js';
+import {
+  COMMANDS, DESCRIPTION, MENU_BUTTON, SHORT_DESCRIPTION, actionFor, commandMention, replyTo,
+} from '../lib/bot.js';
 
 export default async function (message, ctx) {
   const reply = replyTo(message);
@@ -12,9 +14,10 @@ export default async function (message, ctx) {
   if (mention && mention !== (await api.getMe()).username.toLowerCase()) return;
 
   if (actionFor(message.text) === 'start') {
-    // Меню команд у кнопки «/» и описание бота — достаточно выставить один раз, повтор не вредит.
+    // Меню команд, кнопка Mini App и описание бота — достаточно выставить один раз, повтор не вредит.
     const results = await Promise.allSettled([
       api.setMyCommands({ commands: COMMANDS }),
+      api.setChatMenuButton({ menu_button: MENU_BUTTON }),
       api.setMyDescription({ description: DESCRIPTION }),
       api.setMyShortDescription({ short_description: SHORT_DESCRIPTION }),
     ]);

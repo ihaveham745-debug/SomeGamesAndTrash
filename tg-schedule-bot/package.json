@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "deploy": "tgcloud push",
+    "build": "node scripts/build.mjs",
+    "deploy": "npm run build && tgcloud push",
     "status": "tgcloud status",
     "run": "tgcloud run"
   },

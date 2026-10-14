@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Расписание Б-ЭО-26</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="head">
+    <div class="bar">
+      <div class="brand">Б-ЭО-26</div>
+      <button class="pill" id="to-today" type="button" hidden>Сегодня</button>
+      <div class="seg" role="tablist" aria-label="Вид расписания">
+        <button role="tab" type="button" data-view="day">День</button>
+        <button role="tab" type="button" data-view="week">Неделя</button>
+      </div>
+    </div>
+
+    <div class="weeknav">
+      <button class="arrow" id="prev-week" type="button" aria-label="Предыдущая неделя">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <div class="weektitle">
+        <b id="week-range"></b>
+        <span id="week-info"></span>
+      </div>
+      <button class="arrow" id="next-week" type="button" aria-label="Следующая неделя">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+
+    <div class="strip" id="strip"></div>
+  </header>
+
+  <main id="content" aria-live="polite"></main>
+
+  <noscript><p class="empty">Для расписания нужен JavaScript.</p></noscript>
+</body>
+</html>

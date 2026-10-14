@@ -1,3 +1,4 @@
 node_modules/
 .tgcloud/
 .env
+dist/

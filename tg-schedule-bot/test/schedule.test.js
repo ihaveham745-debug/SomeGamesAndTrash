@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { actionFor, commandMention, replyTo, viewFor } from '../tgcloud/lib/bot.js';
-import { formatDay, formatParity, formatWeek, pairsFor, parseDate, today, weekNumber } from '../tgcloud/lib/schedule.js';
+import { readFileSync } from 'node:fs';
+
+import * as schedule from '../tgcloud/lib/schedule.js';
+import { dayStatus, formatDay, formatParity, formatWeek, pairsFor, parseDate, today, weekNumber } from '../tgcloud/lib/schedule.js';
 
 const subjects = (iso) => pairsFor(parseDate(iso)).map((p) => `${p.n} ${p.subject}`);
 
@@ -150,4 +153,23 @@ test('в группе бот молчит на обычные сообщения
   assert.match(parity.text, /7-я неделя — нечётная[\s\S]*19–25 октября\) — 8-я, чётная/);
   // /start и /help возвращают обычную клавиатуру с кнопками
   assert.ok(replyTo({ text: '/start', chat: { type: 'private' } }).reply_markup.keyboard);
+});
+
+test('dayStatus — что идёт сейчас (общее для бота и Mini App)', () => {
+  const pairs = pairsFor(parseDate('2026-10-14')); // пары 1, 3, 4, 5
+  assert.deepEqual(dayStatus(pairs, 7 * 60), { kind: 'next', pair: pairs[0], start: 480, end: 575, first: true });
+  assert.equal(dayStatus(pairs, 8 * 60).kind, 'now');
+  assert.equal(dayStatus(pairs, 9 * 60 + 35).pair.n, 3); // конец 1-й пары → ждём 3-ю
+  assert.equal(dayStatus(pairs, 9 * 60 + 35).first, false);
+  assert.deepEqual(dayStatus(pairs, 17 * 60 + 25), { kind: 'done' });
+  assert.equal(dayStatus([], 600), null);
+});
+
+test('Mini App импортирует только то, что есть в lib/schedule.js', () => {
+  const source = readFileSync(new URL('../webapp/app.js', import.meta.url), 'utf8');
+  const block = /import\s*\{([^}]*)\}\s*from\s*'\.\/lib\/schedule\.js'/.exec(source);
+  assert.ok(block, 'в app.js нет импорта из ./lib/schedule.js');
+  const names = block[1].split(',').map((s) => s.trim()).filter(Boolean);
+  const missing = names.filter((name) => !(name in schedule));
+  assert.deepEqual(missing, []);
 });

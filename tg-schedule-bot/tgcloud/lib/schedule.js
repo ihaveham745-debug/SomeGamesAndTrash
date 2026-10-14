@@ -1,5 +1,6 @@
 // lib/schedule — даты, чётность недели и тексты ответов.
-// Без импортов из 'sdk', поэтому модуль можно тестировать обычным Node.
+// Без импортов из 'sdk', поэтому модуль можно тестировать обычным Node,
+// а Mini App (webapp/) подключает его прямо в браузере.
 //
 // Дата везде — объект Date на полночь UTC нужного календарного дня
 // (так не мешают часовые пояса: считаем только дни).
@@ -7,7 +8,7 @@
 import { BELLS, SEMESTER_END, SEMESTER_START, TIMETABLE, UTC_OFFSET_HOURS } from './timetable.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DAY_NAMES = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
+export const DAY_NAMES = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
 export const DAY_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const MONTHS = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -68,11 +69,11 @@ export function isOddWeek(date) {
   return Math.abs(weekNumber(date)) % 2 === 1;
 }
 
-function parityWord(date) {
+export function parityWord(date) {
   return isOddWeek(date) ? 'нечётная' : 'чётная';
 }
 
-function inSemester(date) {
+export function inSemester(date) {
   const iso = isoDate(date);
   return iso >= SEMESTER_START && iso <= SEMESTER_END;
 }
@@ -99,7 +100,7 @@ function pad(n) {
   return String(n).padStart(2, '0');
 }
 
-function hhmm(minutes) {
+export function hhmm(minutes) {
   return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
 }
 
@@ -112,7 +113,7 @@ function escapeHtml(text) {
 }
 
 /** plural(3, 'пара', 'пары', 'пар') → 'пары'. */
-function plural(n, one, few, many) {
+export function plural(n, one, few, many) {
   const n10 = n % 10;
   const n100 = n % 100;
   if (n10 === 1 && n100 !== 11) return one;
@@ -120,25 +121,25 @@ function plural(n, one, few, many) {
   return many;
 }
 
-function duration(minutes) {
+export function duration(minutes) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return [h && `${h} ч`, m && `${m} мин`].filter(Boolean).join(' ');
 }
 
 /** '14 октября' */
-function dayMonth(date) {
+export function dayMonth(date) {
   return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
 }
 
 /** '12–18 октября' или '28 сентября – 4 октября' */
-function dateRange(from, to) {
+export function dateRange(from, to) {
   if (from.getUTCMonth() === to.getUTCMonth()) return `${from.getUTCDate()}–${dayMonth(to)}`;
   return `${dayMonth(from)} – ${dayMonth(to)}`;
 }
 
 /** Время пары в минутах от полуночи: { start, end } или null, если звонков для неё нет. */
-function bell(n) {
+export function bell(n) {
   const match = /^(\d\d):(\d\d)–(\d\d):(\d\d)$/.exec(BELLS[n] ?? '');
   if (!match) return null;
   const [h1, m1, h2, m2] = match.slice(1).map(Number);
@@ -149,13 +150,13 @@ function placeIcon(room) {
   return /онлайн/i.test(room) ? '💻' : '📍';
 }
 
-function shortType(type) {
+export function shortType(type) {
   return type.split(', ').map((t) => SHORT_TYPES[t] ?? t).join(', ');
 }
 
 // --- Тексты (parse_mode: HTML) ---
 
-function outOfSemester(date) {
+export function outOfSemester(date) {
   if (isoDate(date) < SEMESTER_START) {
     return `🏖 Семестр ещё не начался — занятия с ${dayMonth(parseDate(SEMESTER_START))}.`;
   }
@@ -171,19 +172,31 @@ function relativeDay(date, nowMs) {
   return { [-1]: 'Вчера', 0: 'Сегодня', 1: 'Завтра' }[diff];
 }
 
-/** Что происходит прямо сейчас: идёт пара, перерыв или всё закончилось. */
-function nowLine(pairs, minutes) {
-  const slots = pairs.map((p) => ({ p, time: bell(p.n) })).filter((s) => s.time);
+/**
+ * Что происходит в minutes (минуты от полуночи) среди пар дня:
+ * { kind: 'now', pair, start, end } — идёт пара;
+ * { kind: 'next', pair, start, end, first } — перерыв или пары ещё не начались;
+ * { kind: 'done' } — пары закончились; null — у пар нет времени звонков.
+ */
+export function dayStatus(pairs, minutes) {
+  const slots = pairs.map((pair) => ({ pair, ...bell(pair.n) })).filter((s) => s.start !== undefined);
   if (slots.length === 0) return null;
 
-  const current = slots.find((s) => minutes >= s.time.start && minutes < s.time.end);
-  if (current) {
-    return `🟢 Идёт ${current.p.n}-я пара, до ${hhmm(current.time.end)} — ещё ${duration(current.time.end - minutes)}`;
+  const current = slots.find((s) => minutes >= s.start && minutes < s.end);
+  if (current) return { kind: 'now', ...current };
+  const next = slots.find((s) => minutes < s.start);
+  if (next) return { kind: 'next', ...next, first: next === slots[0] };
+  return { kind: 'done' };
+}
+
+function nowLine(status, minutes) {
+  if (!status) return null;
+  if (status.kind === 'now') {
+    return `🟢 Идёт ${status.pair.n}-я пара, до ${hhmm(status.end)} — ещё ${duration(status.end - minutes)}`;
   }
-  const next = slots.find((s) => minutes < s.time.start);
-  if (next) {
-    const which = next === slots[0] ? 'Первая пара' : 'Следующая пара';
-    return `⏳ ${which} в ${hhmm(next.time.start)} — через ${duration(next.time.start - minutes)}`;
+  if (status.kind === 'next') {
+    const which = status.first ? 'Первая пара' : 'Следующая пара';
+    return `⏳ ${which} в ${hhmm(status.start)} — через ${duration(status.start - minutes)}`;
   }
   return '✅ На сегодня пары закончились';
 }
@@ -222,17 +235,16 @@ export function formatDay(date, nowMs = Date.now()) {
   const span = first && last ? ` с ${hhmm(first.start)} до ${hhmm(last.end)}` : '';
   const intro = [header, `<i>${weekLine(date)} · ${pairs.length} ${plural(pairs.length, 'пара', 'пары', 'пар')}${span}</i>`];
 
-  const isToday = label === 'Сегодня';
   const minutes = minutesNow(nowMs);
-  const status = isToday && nowLine(pairs, minutes);
-  if (status) intro.push('', status);
+  const status = label === 'Сегодня' ? dayStatus(pairs, minutes) : null;
+  const line = nowLine(status, minutes);
+  if (line) intro.push('', line);
 
   const body = [];
   pairs.forEach((p, i) => {
     const prev = pairs[i - 1];
     if (prev && p.n - prev.n > 1) body.push(gapLine(prev.n + 1, p.n - 1));
-    const time = bell(p.n);
-    body.push(pairCard(p, isToday && time && minutes >= time.start && minutes < time.end));
+    body.push(pairCard(p, status?.kind === 'now' && status.pair === p));
   });
 
   return `${intro.join('\n')}\n\n${body.join('\n')}`;
