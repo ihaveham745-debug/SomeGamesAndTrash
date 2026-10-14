@@ -10,33 +10,48 @@
   <script type="module" src="app.js"></script>
 </head>
 <body>
-  <header class="head">
-    <div class="bar">
-      <div class="brand">Б-ЭО-26</div>
-      <button class="pill" id="to-today" type="button" hidden>Сегодня</button>
-      <div class="seg" role="tablist" aria-label="Вид расписания">
-        <button role="tab" type="button" data-view="day">День</button>
-        <button role="tab" type="button" data-view="week">Неделя</button>
-      </div>
-    </div>
+  <div class="wallpaper" aria-hidden="true"></div>
 
-    <div class="weeknav">
-      <button class="arrow" id="prev-week" type="button" aria-label="Предыдущая неделя">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
-      </button>
-      <div class="weektitle">
-        <b id="week-range"></b>
-        <span id="week-info"></span>
-      </div>
-      <button class="arrow" id="next-week" type="button" aria-label="Следующая неделя">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
-      </button>
-    </div>
-
-    <div class="strip" id="strip"></div>
+  <header class="titlebar">
+    <h1>Расписание</h1>
+    <p>Б-ЭО-26 · <span id="week-info"></span></p>
   </header>
 
+  <section class="panel glass blur" aria-label="Неделя">
+    <div class="weeknav">
+      <button class="arrow press" id="prev-week" type="button" aria-label="Предыдущая неделя">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg>
+      </button>
+      <b id="week-range"></b>
+      <button class="arrow press" id="next-week" type="button" aria-label="Следующая неделя">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg>
+      </button>
+    </div>
+    <div class="strip-wrap">
+      <span class="drop" id="day-drop" aria-hidden="true"></span>
+      <div class="strip" id="strip"></div>
+    </div>
+  </section>
+
   <main id="content" aria-live="polite"></main>
+
+  <nav class="dock" aria-label="Вид расписания">
+    <div class="tabs glass blur" role="tablist">
+      <span class="lens" id="tab-lens" aria-hidden="true"></span>
+      <button class="tab press" role="tab" type="button" data-view="day">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><rect class="fill" x="7.5" y="13" width="4" height="4" rx="1"/></svg>
+        <span>День</span>
+      </button>
+      <button class="tab press" role="tab" type="button" data-view="week">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6.5h11M9 12h11M9 17.5h11"/><circle class="fill" cx="4.75" cy="6.5" r="1.4"/><circle class="fill" cx="4.75" cy="12" r="1.4"/><circle class="fill" cx="4.75" cy="17.5" r="1.4"/></svg>
+        <span>Неделя</span>
+      </button>
+    </div>
+    <button class="today glass blur press" id="to-today" type="button" aria-label="Сегодня">
+      <span class="today-dow" id="today-dow"></span>
+      <span class="today-num" id="today-num"></span>
+    </button>
+  </nav>
 
   <noscript><p class="empty">Для расписания нужен JavaScript.</p></noscript>
 </body>

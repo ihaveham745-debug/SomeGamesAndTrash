@@ -20,6 +20,16 @@ function firstDay() {
   return weekday(t) === 7 ? addDays(t, 1) : t;
 }
 
+// Значки в духе SF Symbols.
+const ICON = {
+  pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0C18.5 15.4 12 21 12 21z"/><circle cx="12" cy="10" r="2.3"/></svg>',
+  laptop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="5" width="15" height="10.5" rx="1.8"/><path d="M2.5 19h19"/></svg>',
+  person: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12.5 4 4 8-9"/></svg>',
+  chevron: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg>',
+};
+
 // --- Мелочи ---
 
 function esc(text) {
@@ -60,8 +70,8 @@ function typeClass(type) {
   return '';
 }
 
-function roomHtml(room) {
-  return room ? `${/онлайн/i.test(room) ? '💻' : '📍'} ${esc(room)}` : '';
+function placeHtml(room) {
+  return `<span class="place">${/онлайн/i.test(room) ? ICON.laptop : ICON.pin}${esc(room)}</span>`;
 }
 
 /** Следующий/предыдущий учебный день: воскресенье пропускаем. */
@@ -73,40 +83,47 @@ function stepDay(date, forward) {
 // --- День ---
 
 function emptyHtml(big, title, text = '') {
-  return `<div class="empty">${big ? `<div class="big">${big}</div>` : ''}<b>${esc(title)}</b>${text ? `<p>${esc(text)}</p>` : ''}</div>`;
+  return `<div class="empty"><div class="big glass">${big}</div><b>${esc(title)}</b>${text ? `<p>${esc(text)}</p>` : ''}</div>`;
+}
+
+/** Текст «вне семестра» начинается со значка: '🎓 Семестр закончился…' → круг со значком и текст. */
+function outOfSemesterHtml(date) {
+  const text = outOfSemester(date);
+  const space = text.indexOf(' ');
+  return emptyHtml(text.slice(0, space), text.slice(space + 1));
 }
 
 function statusHtml(status, minutes) {
   if (status.kind === 'done') {
-    return `<div class="card status done"><span class="icon">✅</span><div><div class="what">На сегодня всё</div><div class="main">Пары закончились</div></div></div>`;
+    return `<div class="status glass"><span class="symbol done">${ICON.check}</span><div>
+      <div class="what">На сегодня всё</div><div class="main">Пары закончились</div></div></div>`;
   }
   const { name } = splitSubgroup(status.pair.subject);
-  const room = status.pair.room ? ` · ${roomHtml(status.pair.room)}` : '';
   if (status.kind === 'now') {
-    return `<div class="card status now"><span class="icon">🟢</span><div>
+    return `<div class="status glass now"><span class="live"><i></i></span><div>
       <div class="what">Идёт ${status.pair.n}-я пара · ещё ${duration(status.end - minutes)}</div>
-      <div class="main">${esc(name)}${room}</div></div></div>`;
+      <div class="main">${esc(name)}</div></div></div>`;
   }
-  return `<div class="card status next"><span class="icon">⏳</span><div>
+  return `<div class="status glass"><span class="symbol next">${ICON.clock}</span><div>
     <div class="what">${status.first ? 'Первая' : 'Следующая'} пара через ${duration(status.start - minutes)}</div>
-    <div class="main">${hhmm(status.start)} · ${esc(name)}${room}</div></div></div>`;
+    <div class="main">${hhmm(status.start)} · ${esc(name)}</div></div></div>`;
 }
 
 function pairHtml(p, when, minutes) {
   const time = bell(p.n);
   const { name, subgroup } = splitSubgroup(p.subject);
   const chips = (p.type ? p.type.split(', ') : []).map((t) => `<span class="chip ${typeClass(t)}">${esc(t)}</span>`);
-  if (subgroup) chips.push(`<span class="chip">${esc(subgroup)}</span>`);
+  if (subgroup) chips.push(`<span class="chip sub">${esc(subgroup)}</span>`);
   const progress = when === 'now' && time
     ? `<div class="progress"><div style="width:${Math.round(((minutes - time.start) / (time.end - time.start)) * 100)}%"></div></div>`
     : '';
 
-  return `<li class="pair card ${when}">
+  return `<li class="pair glass ${when}">
     <div class="time">${time ? `<b>${hhmm(time.start)}</b><span>${hhmm(time.end)}</span>` : ''}<span class="n">${p.n} пара</span></div>
     <div class="info">
       <div class="subject">${esc(name)}</div>
-      <div class="meta">${chips.join('')}${p.room ? `<span class="room">${roomHtml(p.room)}</span>` : ''}</div>
-      ${p.teacher ? `<div class="teacher">${esc(p.teacher)}</div>` : ''}
+      <div class="meta">${chips.join('')}${p.room ? placeHtml(p.room) : ''}</div>
+      ${p.teacher ? `<div class="line">${ICON.person}${esc(p.teacher)}</div>` : ''}
     </div>${progress}
   </li>`;
 }
@@ -114,17 +131,17 @@ function pairHtml(p, when, minutes) {
 function gapHtml(fromN, toN) {
   const from = bell(fromN);
   const to = bell(toN);
-  return `<li class="gap">окно${from && to ? ` ${hhmm(from.start)}–${hhmm(to.end)}` : ''}</li>`;
+  return `<li class="gap"><span class="glass">окно${from && to ? ` ${hhmm(from.start)}–${hhmm(to.end)}` : ''}</span></li>`;
 }
 
 function dayHtml(date) {
   const label = relativeLabel(date);
-  const title = `<h1 class="day-title">${cap(DAY_NAMES[weekday(date) - 1])}, ${dayMonth(date)}${label ? ` <span class="badge">${label}</span>` : ''}</h1>`;
-  if (!inSemester(date)) return title + emptyHtml('', outOfSemester(date));
+  const title = `<h2 class="day-title">${cap(DAY_NAMES[weekday(date) - 1])}, ${dayMonth(date)}${label ? ` <span class="badge">${label}</span>` : ''}</h2>`;
+  if (!inSemester(date)) return `<div class="day-head">${title}</div>${outOfSemesterHtml(date)}`;
 
   const pairs = pairsFor(date);
   if (pairs.length === 0) {
-    return `${title}<p class="summary">${weekNumber(date)}-я неделя, ${parityWord(date)}</p>${emptyHtml('🎉', 'Пар нет', 'Можно отдыхать')}`;
+    return `<div class="day-head">${title}<p class="summary">${weekNumber(date)}-я неделя, ${parityWord(date)}</p></div>${emptyHtml('🎉', 'Пар нет', 'Можно отдыхать')}`;
   }
 
   const first = bell(pairs[0].n);
@@ -144,14 +161,15 @@ function dayHtml(date) {
     items.push(pairHtml(p, when, minutes));
   });
 
-  return `${title}<p class="summary">${pairsWord(pairs.length)}${span}</p>${status ? statusHtml(status, minutes) : ''}<ol class="pairs">${items.join('')}</ol>`;
+  return `<div class="day-head">${title}<p class="summary">${pairsWord(pairs.length)}${span}</p></div>
+    ${status ? statusHtml(status, minutes) : ''}<ol class="pairs">${items.join('')}</ol>`;
 }
 
 // --- Неделя ---
 
 function weekHtml(date) {
   const monday = mondayOf(date);
-  if (!isSemesterWeek(monday)) return emptyHtml('', outOfSemester(monday));
+  if (!isSemesterWeek(monday)) return outOfSemesterHtml(monday);
 
   const now = today();
   const sections = [];
@@ -166,46 +184,68 @@ function weekHtml(date) {
       const type = p.type ? ` <span class="t">${esc(shortType(p.type))}</span>` : '';
       return `<li><b>${time ? hhmm(time.start) : `${p.n}.`}</b><span>${esc(p.subject)}${type}</span><span class="r">${esc(p.room ?? '')}</span></li>`;
     });
-    sections.push(`<section class="wday card${isToday ? ' is-today' : ''}">
-      <button class="wday-head" type="button" data-date="${isoDate(day)}">${cap(DAY_NAMES[i])}, ${dayMonth(day)}${isToday ? ' <span class="badge">Сегодня</span>' : ''}<span class="chev">${pairs.length ? pairsWord(pairs.length) : ''} ›</span></button>
+    sections.push(`<section class="wday glass${isToday ? ' is-today' : ''}">
+      <button class="wday-head" type="button" data-date="${isoDate(day)}">
+        <span class="name">${cap(DAY_NAMES[i])}, ${dayMonth(day)}</span>${isToday ? '<span class="badge">Сегодня</span>' : ''}
+        <span class="more">${pairs.length ? pairsWord(pairs.length) : ''}${ICON.chevron}</span>
+      </button>
       ${rows.length ? `<ul>${rows.join('')}</ul>` : '<p class="none">Пар нет</p>'}
     </section>`);
   }
   return `<div class="week">${sections.join('')}</div>`;
 }
 
-// --- Шапка и отрисовка ---
+// --- Шапка, таб-бар и отрисовка ---
 
-function renderHead() {
+/** Двигает «каплю» под выбранный день и «линзу» под выбранную вкладку. */
+function placeHighlights() {
+  const drop = $('day-drop');
+  const day = $('strip').querySelector('.day.selected');
+  if (day) {
+    drop.style.width = `${day.offsetWidth}px`;
+    drop.style.transform = `translateX(${day.offsetLeft}px)`;
+  }
+  drop.classList.toggle('off', !day);
+
+  const tab = document.querySelector(`.tab[data-view="${state.view}"]`);
+  $('tab-lens').style.transform = `translateX(${tab.offsetLeft - 4}px)`;
+}
+
+function renderChrome() {
   const monday = mondayOf(state.date);
   $('week-range').textContent = dateRange(monday, addDays(monday, 6));
   $('week-info').textContent = isSemesterWeek(monday)
-    ? `${weekNumber(monday)}-я неделя · ${parityWord(monday)}`
+    ? `${weekNumber(monday)}-я неделя, ${parityWord(monday)}`
     : 'вне семестра';
 
   const now = today();
   $('strip').innerHTML = DAY_SHORT.slice(0, 6).map((short, i) => {
     const day = addDays(monday, i);
     const count = pairsFor(day).length;
-    const cls = ['day', same(day, now) && 'today', state.view === 'day' && same(day, state.date) && 'selected'];
+    const cls = ['day', 'press', same(day, now) && 'today', state.view === 'day' && same(day, state.date) && 'selected'];
     const label = `${cap(DAY_NAMES[i])}, ${dayMonth(day)}: ${count ? pairsWord(count) : 'пар нет'}`;
     return `<button type="button" class="${cls.filter(Boolean).join(' ')}" data-date="${isoDate(day)}" aria-label="${label}">
       <span class="dow">${short}</span><span class="num">${day.getUTCDate()}</span><span class="dots">${'<i></i>'.repeat(Math.min(count, 5))}</span>
     </button>`;
   }).join('');
 
-  for (const tab of document.querySelectorAll('[data-view]')) {
+  for (const tab of document.querySelectorAll('.tab')) {
     tab.setAttribute('aria-selected', String(tab.dataset.view === state.view));
   }
-  const home = firstDay();
-  $('to-today').hidden = state.view === 'day'
-    ? same(state.date, home)
-    : same(mondayOf(state.date), mondayOf(home));
+
+  $('today-dow').textContent = DAY_SHORT[weekday(now) - 1];
+  $('today-num').textContent = now.getUTCDate();
+  $('to-today').classList.toggle('here', state.view === 'day' && same(state.date, firstDay()));
+  $('to-today').setAttribute('aria-label', `Сегодня, ${dayMonth(now)}`);
+
+  placeHighlights();
 }
 
-function render() {
-  renderHead();
-  $('content').innerHTML = state.view === 'day' ? dayHtml(state.date) : weekHtml(state.date);
+/** anim: 'fwd' / 'back' — въезд справа/слева, 'fade' — проявление, 'still' — без анимации. */
+function render(anim = 'still') {
+  renderChrome();
+  const html = state.view === 'day' ? dayHtml(state.date) : weekHtml(state.date);
+  $('content').innerHTML = `<div class="view ${anim}">${html}</div>`;
 }
 
 function haptic() {
@@ -218,10 +258,12 @@ function haptic() {
 
 function go(date, view = state.view) {
   if (same(date, state.date) && view === state.view) return;
+  let anim = 'fade';
+  if (view === state.view) anim = date > state.date ? 'fwd' : 'back';
   state.date = date;
   state.view = view;
   haptic();
-  render();
+  render(anim);
   window.scrollTo(0, 0);
 }
 
@@ -234,7 +276,7 @@ document.addEventListener('click', (e) => {
   else if (el.dataset.view) go(state.date, el.dataset.view);
   else if (el.id === 'prev-week') go(addDays(state.date, -7));
   else if (el.id === 'next-week') go(addDays(state.date, 7));
-  else if (el.id === 'to-today') go(firstDay());
+  else if (el.id === 'to-today') go(firstDay(), 'day');
 });
 
 document.addEventListener('keydown', (e) => {
@@ -247,7 +289,7 @@ document.addEventListener('keydown', (e) => {
 let touch = null;
 document.addEventListener('touchstart', (e) => {
   const t = e.touches[0];
-  touch = { x: t.clientX, y: t.clientY, strip: Boolean(e.target.closest('#strip')) };
+  touch = { x: t.clientX, y: t.clientY, strip: Boolean(e.target.closest('.panel')) };
 }, { passive: true });
 document.addEventListener('touchend', (e) => {
   if (!touch) return;
@@ -261,6 +303,8 @@ document.addEventListener('touchend', (e) => {
   if (strip || state.view === 'week') go(addDays(state.date, forward ? 7 : -7));
   else go(stepDay(state.date, forward));
 }, { passive: true });
+
+addEventListener('resize', placeHighlights);
 
 // «Что сейчас» живое: раз в 30 секунд и при возвращении в приложение.
 let lastToday = today();
@@ -280,24 +324,28 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden) tick();
 });
 
-// --- Telegram ---
+// --- Тема и Telegram ---
 
 function applyScheme() {
   const dark = inTelegram ? tg.colorScheme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.dataset.scheme = dark ? 'dark' : 'light';
+  if (!inTelegram) return;
+  // Шапку и фон Telegram красим в цвет нашего фона, чтобы не было шва.
+  const base = getComputedStyle(document.documentElement).getPropertyValue('--base').trim();
+  if (tg.isVersionAtLeast('6.1')) tg.setBackgroundColor(base);
+  if (tg.isVersionAtLeast('6.9')) tg.setHeaderColor(base);
 }
 
 applyScheme();
 if (inTelegram) {
   tg.ready();
   tg.expand();
-  if (tg.isVersionAtLeast('6.1')) {
-    tg.setHeaderColor('secondary_bg_color');
-    tg.setBackgroundColor('secondary_bg_color');
-  }
   tg.onEvent('themeChanged', applyScheme);
 } else {
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyScheme);
 }
 
-render();
+// Первая отрисовка — без перетеканий, чтобы «капля» не выезжала из угла.
+document.body.classList.add('no-anim');
+render('fade');
+requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('no-anim')));
