@@ -1,11 +1,15 @@
 // handlers/message — платформа вызывает его на каждое входящее сообщение.
 
 import { api } from 'sdk';
-import { COMMANDS, DESCRIPTION, SHORT_DESCRIPTION, actionFor, replyTo } from '../lib/bot.js';
+import { COMMANDS, DESCRIPTION, SHORT_DESCRIPTION, actionFor, commandMention, replyTo } from '../lib/bot.js';
 
 export default async function (message, ctx) {
   const reply = replyTo(message);
   if (!reply) return;
+
+  // «/help@другой_бот» в группе — не нам (бот-админ получает все сообщения группы).
+  const mention = commandMention(message.text);
+  if (mention && mention !== (await api.getMe()).username.toLowerCase()) return;
 
   if (actionFor(message.text) === 'start') {
     // Меню команд у кнопки «/» и описание бота — достаточно выставить один раз, повтор не вредит.
@@ -21,6 +25,8 @@ export default async function (message, ctx) {
 
   await api.sendMessage({
     chat_id: message.chat.id,
+    // В группе с темами отвечаем в ту же тему, а не в «Общий».
+    ...(message.is_topic_message && { message_thread_id: message.message_thread_id }),
     text: reply.text,
     parse_mode: 'HTML',
     reply_markup: reply.reply_markup,

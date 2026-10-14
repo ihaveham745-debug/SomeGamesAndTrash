@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { actionFor, replyTo, viewFor } from '../tgcloud/lib/bot.js';
+import { actionFor, commandMention, replyTo, viewFor } from '../tgcloud/lib/bot.js';
 import { formatDay, formatParity, formatWeek, pairsFor, parseDate, today, weekNumber } from '../tgcloud/lib/schedule.js';
 
 const subjects = (iso) => pairsFor(parseDate(iso)).map((p) => `${p.n} ${p.subject}`);
@@ -89,18 +89,18 @@ test('кнопки под сообщением листают дни и неде
   const now = at(12, 0);
   const buttons = (view) => view.reply_markup.inline_keyboard.flat().map((b) => `${b.text}|${b.callback_data}`);
 
-  const today = replyTo({ text: '/today', chat: { type: 'private' } }, now);
-  assert.deepEqual(buttons(today), [
+  const todayView = replyTo({ text: '/today', chat: { type: 'private' } }, now);
+  assert.deepEqual(buttons(todayView), [
     '◀️ Вт 13.10|d:2026-10-13',
     'Чт 15.10 ▶️|d:2026-10-15',
-    '🔄 Обновить|d:2026-10-14',
+    '🔄 Обновить|d:today',
     '🗓 Вся неделя|w:2026-10-14',
   ]);
   // воскресенье пропускается
   assert.deepEqual(buttons(viewFor('d:2026-10-17', now)).slice(0, 3), [
     '◀️ Пт 16.10|d:2026-10-16',
     'Пн 19.10 ▶️|d:2026-10-19',
-    '📅 Сегодня|d:2026-10-14',
+    '📅 Сегодня|d:today',
   ]);
   assert.equal(buttons(viewFor('d:2026-10-19', now))[0], '◀️ Сб 17.10|d:2026-10-17');
 
@@ -109,12 +109,17 @@ test('кнопки под сообщением листают дни и неде
     'Пн|d:2026-10-12', 'Вт|d:2026-10-13', '•Ср•|d:2026-10-14',
     'Чт|d:2026-10-15', 'Пт|d:2026-10-16', 'Сб|d:2026-10-17',
   ]);
-  assert.deepEqual(week.slice(6), ['◀️ 6-я нед.|w:2026-10-05', '🔄 Обновить|w:2026-10-14', '8-я нед. ▶️|w:2026-10-19']);
+  assert.deepEqual(week.slice(6), ['◀️ 6-я нед.|w:2026-10-05', '🔄 Обновить|w:today', '8-я нед. ▶️|w:2026-10-19']);
   // за пределами семестра номеров недель нет
   assert.equal(buttons(viewFor('w:2026-08-31', now))[6], '◀️|w:2026-08-24');
   assert.equal(buttons(viewFor('w:2026-12-28', now))[8], '▶️|w:2027-01-04');
 
   assert.match(viewFor('d:2026-10-16', now).text, /Пятница, 16 октября/);
+  // «Сегодня» — день нажатия, а не день, когда отправили сообщение
+  const thursday = Date.UTC(2026, 9, 15, 3);
+  assert.match(viewFor('d:today', thursday).text, /Сегодня · четверг, 15 октября/);
+  assert.match(viewFor('w:today', Date.UTC(2026, 9, 20, 3)).text, /8-я неделя, чётная/);
+  assert.equal(buttons(replyTo({ text: '/parity', chat: { type: 'private' } }, now))[0], '🗓 Расписание на неделю|w:today');
   assert.equal(viewFor('d:2026-02-31', now), null);
   assert.equal(viewFor('x:2026-10-14', now), null);
   assert.equal(viewFor(undefined, now), null);
@@ -129,6 +134,12 @@ test('распознавание команд и кнопок', () => {
   assert.equal(actionFor('/todayx'), null);
   assert.equal(actionFor('привет'), null);
   assert.equal(actionFor(undefined), null);
+
+  assert.equal(commandMention('/today@For_Milian_bot'), 'for_milian_bot');
+  assert.equal(commandMention('/help@OtherBot extra'), 'otherbot');
+  assert.equal(commandMention('/today'), null);
+  assert.equal(commandMention('📅 Сегодня'), null);
+  assert.equal(commandMention(undefined), null);
 });
 
 test('в группе бот молчит на обычные сообщения, в личке подсказывает', () => {

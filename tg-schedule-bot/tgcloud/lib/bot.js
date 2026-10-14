@@ -58,10 +58,15 @@ const HELP_TEXT = [
   '<i>Время — якутское.</i>',
 ].join('\n');
 
-// --- Кнопки под сообщением (callback_data: 'd:ГГГГ-ММ-ДД' — день, 'w:ГГГГ-ММ-ДД' — неделя) ---
+// --- Кнопки под сообщением ---
+// callback_data: 'd:ГГГГ-ММ-ДД' — день, 'w:ГГГГ-ММ-ДД' — неделя с этим днём.
+// Вместо даты может стоять 'today' — день нажатия, а не отправки: кнопка «Сегодня»
+// в позавчерашнем сообщении должна открыть сегодня.
 
-function button(text, date, kind) {
-  return { text, callback_data: `${kind}:${isoDate(date)}` };
+const TODAY = 'today';
+
+function button(text, kind, date) {
+  return { text, callback_data: `${kind}:${date === TODAY ? TODAY : isoDate(date)}` };
 }
 
 function shortDate(date) {
@@ -72,12 +77,11 @@ function dayKeyboard(date, nowMs) {
   // Воскресенье пропускаем: из понедельника назад — в субботу, из субботы вперёд — в понедельник.
   const prev = addDays(date, weekday(date) === 1 ? -2 : -1);
   const next = addDays(date, weekday(date) === 6 ? 2 : 1);
-  const now = today(nowMs);
-  const isToday = date.getTime() === now.getTime();
+  const isToday = date.getTime() === today(nowMs).getTime();
   return {
     inline_keyboard: [
-      [button(`◀️ ${shortDate(prev)}`, prev, 'd'), button(`${shortDate(next)} ▶️`, next, 'd')],
-      [button(isToday ? '🔄 Обновить' : '📅 Сегодня', now, 'd'), button('🗓 Вся неделя', date, 'w')],
+      [button(`◀️ ${shortDate(prev)}`, 'd', prev), button(`${shortDate(next)} ▶️`, 'd', next)],
+      [button(isToday ? '🔄 Обновить' : '📅 Сегодня', 'd', TODAY), button('🗓 Вся неделя', 'w', date)],
     ],
   };
 }
@@ -92,15 +96,15 @@ function weekKeyboard(date, nowMs) {
 
   const days = DAY_SHORT.slice(0, 6).map((name, i) => {
     const day = addDays(monday, i);
-    return button(day.getTime() === now.getTime() ? `•${name}•` : name, day, 'd');
+    return button(day.getTime() === now.getTime() ? `•${name}•` : name, 'd', day);
   });
   return {
     inline_keyboard: [
       days,
       [
-        button(`◀️ ${label(prev)}`.trim(), prev, 'w'),
-        button(isCurrent ? '🔄 Обновить' : '🗓 Эта неделя', now, 'w'),
-        button(`${label(next)} ▶️`.trim(), next, 'w'),
+        button(`◀️ ${label(prev)}`.trim(), 'w', prev),
+        button(isCurrent ? '🔄 Обновить' : '🗓 Эта неделя', 'w', TODAY),
+        button(`${label(next)} ▶️`.trim(), 'w', next),
       ],
     ],
   };
@@ -115,10 +119,9 @@ function weekView(date, nowMs) {
 }
 
 function parityView(nowMs) {
-  const now = today(nowMs);
   return {
-    text: formatParity(now),
-    reply_markup: { inline_keyboard: [[button('🗓 Расписание на неделю', now, 'w')]] },
+    text: formatParity(today(nowMs)),
+    reply_markup: { inline_keyboard: [[button('🗓 Расписание на неделю', 'w', TODAY)]] },
   };
 }
 
@@ -133,15 +136,21 @@ const ACTIONS = {
   parity: (now) => parityView(now),
 };
 
+const COMMAND = /^\/([a-z_]+)(?:@(\w+))?(?:\s|$)/i;
+
 /** Какое действие просят: '/today', '/today@bot_name' или текст кнопки. */
 export function actionFor(text) {
   if (!text) return null;
   for (const [action, label] of Object.entries(BUTTONS)) {
     if (text.trim() === label) return action;
   }
-  const match = /^\/([a-z_]+)(@\w+)?(\s|$)/i.exec(text.trim());
-  const command = match?.[1].toLowerCase();
+  const command = COMMAND.exec(text.trim())?.[1].toLowerCase();
   return command && command in ACTIONS ? command : null;
+}
+
+/** Какому боту адресована команда: '/today@Some_bot' → 'some_bot'; без упоминания — null. */
+export function commandMention(text) {
+  return COMMAND.exec(text?.trim() ?? '')?.[2]?.toLowerCase() ?? null;
 }
 
 /**
@@ -159,9 +168,9 @@ export function replyTo(message, nowMs = Date.now()) {
 
 /** Что показать по нажатию кнопки под сообщением; null — непонятная кнопка. */
 export function viewFor(data, nowMs = Date.now()) {
-  const match = /^([dw]):(\d{4}-\d{2}-\d{2})$/.exec(data ?? '');
+  const match = /^([dw]):(today|\d{4}-\d{2}-\d{2})$/.exec(data ?? '');
   if (!match) return null;
-  const date = parseDate(match[2]);
-  if (isoDate(date) !== match[2]) return null; // 2026-02-31 и подобное
+  const date = match[2] === TODAY ? today(nowMs) : parseDate(match[2]);
+  if (match[2] !== TODAY && isoDate(date) !== match[2]) return null; // 2026-02-31 и подобное
   return match[1] === 'd' ? dayView(date, nowMs) : weekView(date, nowMs);
 }

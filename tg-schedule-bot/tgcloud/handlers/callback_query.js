@@ -27,6 +27,12 @@ export default async function (query, ctx) {
     }
   }
 
-  // Без ответа у кнопки крутятся «часики».
-  await api.answerCallbackQuery({ callback_query_id: query.id, ...(notice && { text: notice }) });
+  // Без ответа у кнопки крутятся «часики». Если нажатие уже устарело, Telegram откажет —
+  // сообщение к этому моменту обновлено, так что просто пишем в лог.
+  try {
+    await api.answerCallbackQuery({ callback_query_id: query.id, ...(notice && { text: notice }) });
+  } catch (err) {
+    if (!(err instanceof BotApiError)) throw err;
+    console.warn('answerCallbackQuery failed', err.description);
+  }
 }
