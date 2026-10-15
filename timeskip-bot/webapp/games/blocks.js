@@ -66,6 +66,10 @@ export function mount(root) {
   root.innerHTML = `
     <section class="bb-top">
       <div class="bb-best" aria-label="Рекорд">${CROWN}<b id="best"></b></div>
+      <div class="bb-center">
+        <div class="bb-score" id="score" aria-live="polite"></div>
+        <div class="combo off" id="combo"></div>
+      </div>
       <div class="bb-actions">
         <button type="button" class="bb-btn press" id="sound"></button>
         <button type="button" class="bb-btn press" id="restart" aria-label="Новая игра">
@@ -73,8 +77,6 @@ export function mount(root) {
         </button>
       </div>
     </section>
-    <div class="bb-score" id="score" aria-live="polite"></div>
-    <div class="combo off" id="combo"></div>
     <section class="blocks-board-wrap" id="wrap">
       <div class="blocks-board" id="board" role="grid" aria-label="Поле 8 на 8">
         ${Array.from({ length: SIZE * SIZE }, () => '<div class="bcell"></div>').join('')}

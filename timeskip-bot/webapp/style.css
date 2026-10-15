@@ -548,10 +548,16 @@ body:has(.screen-blocks) .top { background: rgba(40, 56, 140, .45); }
 }
 .art-blocks i[class^="c"] { --bev: 3px; }
 
-.bb-top { display: flex; align-items: center; justify-content: space-between; min-height: 40px; }
+.screen-blocks { gap: 12px; padding-top: 10px; }
+body:has(.screen-blocks) { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+
+/* Рекорд, счёт с комбо и кнопки — одной строкой, чтобы поле и фигуры влезали в экран. */
+.bb-top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 8px; }
+.bb-center { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .bb-best { display: flex; align-items: center; gap: 6px; font-size: 20px; font-weight: 800; color: #ffd84d; font-variant-numeric: tabular-nums; text-shadow: 0 2px 0 rgba(0, 0, 0, .25); }
 .bb-best svg, .over-card p svg { width: 26px; height: 26px; fill: #ffd84d; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .25)); }
-.bb-actions { display: flex; gap: 8px; }
+.bb-best { padding-top: 6px; }
+.bb-actions { display: flex; gap: 8px; justify-self: end; }
 .bb-btn {
   display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px;
   background: rgba(255, 255, 255, .16); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 3px 0 rgba(0, 0, 0, .18);
@@ -559,13 +565,13 @@ body:has(.screen-blocks) .top { background: rgba(40, 56, 140, .45); }
 .bb-btn svg { width: 22px; height: 22px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
 .bb-score {
-  margin: -6px 0 -4px; text-align: center;
-  font-size: 54px; font-weight: 900; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+  margin: 0; text-align: center;
+  font-size: 46px; font-weight: 900; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums;
   text-shadow: 0 4px 0 rgba(0, 0, 0, .22);
 }
 .bb-score.bump { animation: pop .4s var(--spring); }
 
-.blocks-board-wrap { position: relative; }
+.blocks-board-wrap { position: relative; align-self: center; width: min(100%, calc(var(--tg-viewport-stable-height, 100dvh) - 330px)); min-width: 260px; }
 .blocks-board-wrap.shake { animation: shake .4s ease; }
 @keyframes shake { 20% { transform: translateX(-6px) rotate(-.6deg); } 40% { transform: translateX(5px) rotate(.5deg); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
 
@@ -602,7 +608,7 @@ body:has(.screen-blocks) .top { background: rgba(40, 56, 140, .45); }
 /* Серия: плашка «Комбо N» и точки — сколько ходов осталось, чтобы её продлить. */
 .combo {
   display: flex; align-items: center; justify-content: center; gap: 10px;
-  height: 36px; margin: -4px 0 -6px; padding: 0 16px; align-self: center;
+  height: 28px; padding: 0 12px; font-size: 14px;
   border-radius: 999px; background: rgba(0, 0, 0, .22); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .15);
   font-weight: 800; font-variant-numeric: tabular-nums;
   transition: opacity .3s, transform .4s var(--spring);
@@ -663,8 +669,8 @@ body:has(.screen-blocks) .top { background: rgba(40, 56, 140, .45); }
 .over-card p.record { animation: pop .6s var(--spring) 3; }
 .over-card .btn-primary { background: linear-gradient(180deg, #5ee36a, #2fbf47); color: #fff; font-weight: 800; text-shadow: 0 1px 0 rgba(0, 0, 0, .2); box-shadow: 0 4px 0 #1f8a33, 0 10px 20px rgba(0, 0, 0, .3); }
 
-.blocks-tray { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; min-height: 124px; touch-action: none; }
-.tray-slot { display: grid; place-items: center; min-height: 124px; border-radius: 16px; cursor: grab; transition: opacity .2s, filter .2s; }
+.blocks-tray { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; min-height: 112px; touch-action: none; }
+.tray-slot { display: grid; place-items: center; min-height: 112px; border-radius: 16px; cursor: grab; transition: opacity .2s, filter .2s; }
 .tray-slot.empty { cursor: default; }
 .tray-slot.nofit { opacity: .35; filter: grayscale(.7); }
 .tray-slot.dragging { opacity: 0; }
