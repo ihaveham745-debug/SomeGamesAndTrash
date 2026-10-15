@@ -1,0 +1,9 @@
+{
+  // Mini App с играми — обычная статика, сборка не нужна.
+  "static": {
+    "source": "webapp",
+    // Файлы без хешей в именах — пусть браузер каждый раз сверяется.
+    "headers": [{ "path": "/*", "set": { "Cache-Control": "no-cache" } }]
+  },
+  "$schema": "./node_modules/@tgcloud/cli/schema/tgcloud.json"
+}
