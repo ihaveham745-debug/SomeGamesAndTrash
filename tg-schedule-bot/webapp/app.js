@@ -1,4 +1,4 @@
-// Mini App: расписание Б-ЭО-26.
+// Mini App: расписание группы (какой — см. lib/timetable.js).
 // Расписание и расчёты — те же модули, что у бота: при сборке tgcloud/lib/ копируется в dist/lib/.
 
 import {
@@ -6,6 +6,7 @@ import {
   inSemester, isSemesterWeek, isoDate, minutesNow, mondayOf, outOfSemester, pairsFor,
   parityWord, parseDate, plural, shortType, today, weekNumber, weekday,
 } from './lib/schedule.js';
+import { GROUP } from './lib/timetable.js';
 import { MAX_NOTE_LENGTH, SUBJECTS, cleanText, homeworkFor, nextPairDate } from './lib/homework.js';
 
 const tg = window.Telegram?.WebApp;
@@ -520,6 +521,9 @@ function applyScheme() {
   if (tg.isVersionAtLeast('6.1')) tg.setBackgroundColor(base);
   if (tg.isVersionAtLeast('6.9')) tg.setHeaderColor(base);
 }
+
+$('group').textContent = GROUP;
+document.title = `Расписание ${GROUP}`;
 
 applyScheme();
 if (inTelegram) {

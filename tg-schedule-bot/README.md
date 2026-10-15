@@ -1,7 +1,14 @@
-# Пары на сегодня — бот расписания Б-ЭО-26
+# Пары на сегодня — боты расписания групп ФТИ
 
-Telegram-бот ([@For_Milian_bot](https://t.me/For_Milian_bot)) показывает пары группы
-Б-ЭО-26 на сегодня, на завтра и на неделю, а ещё говорит, чётная сейчас неделя или нечётная.
+Один код — несколько ботов, у каждой группы свой:
+
+| Группа | Бот | Файл расписания |
+|---|---|---|
+| Б-ЭО-26 | [@For_Milian_bot](https://t.me/For_Milian_bot) | `tgcloud/lib/groups/b-eo-26.js` |
+| Б-ТММС-26 | [@Rentonchik666_pro_bot](https://t.me/Rentonchik666_pro_bot) | `tgcloud/lib/groups/b-tmms-26.js` |
+
+Бот показывает пары на сегодня, на завтра и на неделю, а ещё говорит, чётная сейчас неделя
+или нечётная.
 
 Работает на **Telegram Serverless**: код лежит в облаке Telegram, свой сервер не нужен.
 Есть и **Mini App** — приложение с расписанием прямо внутри Telegram
@@ -52,25 +59,30 @@ Telegram-бот ([@For_Milian_bot](https://t.me/For_Milian_bot)) показыв�
 
 ## Как задеплоить
 
-Нужен Node.js 18+.
+Нужен Node.js 18+. Для каждого бота: @BotFather → бот → **Serverless** → включить →
+**CLI Access** → скопировать *Access token* (начинается с `app…`, это **не** токен бота).
 
-1. В @BotFather: твой бот → **Serverless** → включить → **CLI Access** → скопировать
-   *Access token* (он начинается с `app…`, это **не** токен бота).
-2. В папке `tg-schedule-bot`:
+```sh
+npm install
+TGCLOUD_TOKEN_B_TMMS_26=app… npm run deploy -- b-tmms-26   # первый раз — с ключом
+npm run deploy -- b-tmms-26                                # дальше ключ уже сохранён
+```
 
-   ```sh
-   npm install
-   npx tgcloud init     # один раз: создаст служебную папку .tgcloud/ (твои файлы не трогает)
-   npx tgcloud login    # вставь Access token из шага 1
-   npm run deploy       # собрать Mini App и залить всё в облако
-   ```
+Имя переменной — `TGCLOUD_TOKEN_` + группа большими буквами (`TGCLOUD_TOKEN_B_EO_26`).
+Скрипт собирает копию проекта для группы в `.deploy/<группа>/` (там же хранит ключ,
+папка не попадает в git), заливает код и Mini App и применяет безопасные изменения базы.
+Ключ от чужого бота он не примет — расписание одной группы не уедет в бота другой.
 
-3. Напиши боту `/start` — заодно бот выставит себе меню команд, кнопку «Расписание» и описание.
+После деплоя напиши боту `/start` — он выставит себе меню команд, кнопку «Расписание» и описание.
 
-Если менялся `tgcloud/schema.js`, после деплоя ещё `npx tgcloud migrate`.
+После любых правок расписания снова запусти `npm run deploy -- <группа>`.
 
-После любых правок расписания снова запусти `npm run deploy` (не голый `tgcloud push`:
-без сборки в приложение уйдёт старое расписание).
+### Новая группа
+
+1. Скопируй `tgcloud/lib/groups/b-eo-26.js` в `tgcloud/lib/groups/<группа>.js`, поменяй
+   `GROUP`, `APP_ID` (из ключа: `app<цифры>`), `MINI_APP_URL` и само расписание.
+2. `npm test` — проверит, что пары попадают в звонки и нет накладок.
+3. `TGCLOUD_TOKEN_<ГРУППА>=app… npm run deploy -- <группа>`.
 
 ## Где что лежит
 
@@ -78,7 +90,8 @@ Telegram-бот ([@For_Milian_bot](https://t.me/For_Milian_bot)) показыв�
 tgcloud/
   handlers/message.js        — принимает сообщения и отправляет ответ
   handlers/callback_query.js — нажатия на кнопки под расписанием (правит сообщение)
-  lib/timetable.js           — САМО РАСПИСАНИЕ (правь здесь)
+  lib/groups/*.js            — РАСПИСАНИЯ ГРУПП (правь здесь)
+  lib/timetable.js           — какая группа у этой сборки (переписывает deploy.mjs)
   lib/schedule.js            — даты, чётность недели, тексты ответов
   lib/bot.js                 — команды, кнопки, описание бота, выбор ответа
   lib/homework.js            — задания: поиск предмета, ближайшая пара, проверка текста
@@ -87,12 +100,13 @@ tgcloud/
   schema.js                  — база данных: таблица notes
 webapp/                      — Mini App: index.html, style.css, app.js
 scripts/build.mjs            — сборка Mini App в dist/ (npm run build)
+scripts/deploy.mjs           — деплой бота группы (npm run deploy -- <группа>)
 test/schedule.test.js        — тесты: npm test
 ```
 
 ## Как поменять расписание
 
-Всё в `tgcloud/lib/timetable.js`:
+Всё в файле группы, `tgcloud/lib/groups/<группа>.js`:
 
 - `SEMESTER_START` — неделя, в которую попадает эта дата, считается 1-й (нечётной).
   Если в вузе неделя считается наоборот, сдвинь дату на неделю.

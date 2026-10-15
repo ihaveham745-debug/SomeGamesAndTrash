@@ -11,6 +11,7 @@ import {
   DAY_SHORT, addDays, dayMonth, ddmm, escapeHtml, formatDay, formatParity, formatWeek,
   isSemesterWeek, isoDate, mondayOf, parseDate, today, weekNumber, weekday,
 } from './schedule.js';
+import { GROUP, MINI_APP_URL } from './timetable.js';
 import { cleanText, findSubject, nextPairDate, validateNote } from './homework.js';
 
 export const NO_STORE = {
@@ -53,23 +54,23 @@ export const COMMANDS = [
 
 // Профиль бота: DESCRIPTION видно в пустом чате до /start, SHORT_DESCRIPTION — в профиле.
 export const DESCRIPTION = [
-  '📚 Расписание группы Б-ЭО-26',
+  `📚 Расписание группы ${GROUP}`,
   '',
   '• пары на сегодня и завтра — со временем, аудиторией и преподавателем',
   '• расписание на всю неделю',
   '• чётная сейчас неделя или нечётная',
 ].join('\n');
 
-export const SHORT_DESCRIPTION = '📅 Пары группы Б-ЭО-26: сегодня, завтра, на неделю и чётность недели';
+export const SHORT_DESCRIPTION = `📅 Пары группы ${GROUP}: сегодня, завтра, на неделю и чётность недели`;
 
-// Mini App (папка webapp/). Адрес выдаёт платформа — его печатает `npm run deploy`.
-export const MINI_APP_URL = 'https://app8605454352.tgcloud.ai/';
+// Адрес Mini App (папка webapp/) — в файле группы, lib/groups/*.js.
+export { MINI_APP_URL };
 
 // Кнопка слева от поля ввода в личке с ботом — открывает Mini App.
 export const MENU_BUTTON = { type: 'web_app', text: 'Расписание', web_app: { url: MINI_APP_URL } };
 
 const HELP_TEXT = [
-  '👋 <b>Привет! Я бот расписания группы Б-ЭО-26</b>',
+  `👋 <b>Привет! Я бот расписания группы ${GROUP}</b>`,
   '',
   'Подскажу, какие сегодня пары, где они проходят и какая сейчас неделя.',
   '',

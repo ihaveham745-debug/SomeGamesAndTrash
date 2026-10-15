@@ -5,7 +5,7 @@
   "scripts": {
     "test": "node --test",
     "build": "node scripts/build.mjs",
-    "deploy": "npm run build && tgcloud push",
+    "deploy": "node scripts/deploy.mjs",
     "status": "tgcloud status",
     "run": "tgcloud run"
   },
