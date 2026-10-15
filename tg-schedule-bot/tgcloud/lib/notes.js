@@ -3,6 +3,7 @@
 import { db } from 'sdk';
 import { and, asc, eq, gte, isNull, lte, or } from 'sdk/db';
 import { notes } from '../schema.js';
+import { stats } from './stats.js';
 
 const FIELDS = {
   id: notes.id,
@@ -34,6 +35,7 @@ export const store = {
     const [row] = await db.insert(notes).values({ subject, due, text, authorId, authorName }).returning(FIELDS);
     return row;
   },
+  stats,
 };
 
 /** Все записи (для Mini App: их немного, приложение само раскладывает по дням). */

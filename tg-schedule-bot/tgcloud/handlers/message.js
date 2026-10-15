@@ -5,14 +5,20 @@ import {
   COMMANDS, DESCRIPTION, MENU_BUTTON, SHORT_DESCRIPTION, actionFor, commandMention, replyTo,
 } from '../lib/bot.js';
 import { store } from '../lib/notes.js';
+import { track } from '../lib/stats.js';
 
 export default async function (message, ctx) {
-  const reply = await replyTo(message, Date.now(), store);
-  if (!reply) return;
+  // В группе бот молчит на посторонние сообщения — их и в статистику не пишем.
+  if (!actionFor(message.text) && message.chat?.type !== 'private') return;
 
   // «/help@другой_бот» в группе — не нам (бот-админ получает все сообщения группы).
   const mention = commandMention(message.text);
   if (mention && mention !== (await api.getMe()).username.toLowerCase()) return;
+
+  // Сначала отмечаем визит, чтобы /stats уже считал того, кто спросил.
+  await track(message.from);
+  const reply = await replyTo(message, Date.now(), store);
+  if (!reply) return;
 
   if (actionFor(message.text) === 'start') {
     // Меню команд, кнопка Mini App и описание бота — достаточно выставить один раз, повтор не вредит.
