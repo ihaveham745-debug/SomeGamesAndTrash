@@ -19,4 +19,7 @@ const env = { ...process.env, TGCLOUD_TOKEN: token };
 const run = (...args) => execFileSync('npx', ['tgcloud', ...args], { stdio: 'inherit', env });
 
 if (!existsSync(new URL('../.tgcloud/state.json', import.meta.url))) run('fetch');
+execFileSync('node', [new URL('./sync-lib.mjs', import.meta.url).pathname], { stdio: 'inherit' });
 run('push');
+// Новые таблицы и столбцы; удаление данных (--safe) не применяем.
+run('migrate', '--safe');
