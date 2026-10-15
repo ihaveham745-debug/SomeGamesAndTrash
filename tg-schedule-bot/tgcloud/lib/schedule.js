@@ -84,6 +84,11 @@ export function isSemesterWeek(date) {
   return isoDate(addDays(monday, 6)) >= SEMESTER_START && isoDate(monday) <= SEMESTER_END;
 }
 
+/** 'Физика (подгр. А)' → 'Физика' */
+export function baseSubject(subject) {
+  return subject.replace(/\s*\(подгр\.[^)]*\)$/, '');
+}
+
 export function pairsFor(date) {
   if (!inSemester(date)) return [];
   const parity = isOddWeek(date) ? 'odd' : 'even';
@@ -108,7 +113,7 @@ function capitalize(text) {
   return text[0].toUpperCase() + text.slice(1);
 }
 
-function escapeHtml(text) {
+export function escapeHtml(text) {
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
@@ -201,7 +206,7 @@ function nowLine(status, minutes) {
   return '✅ На сегодня пары закончились';
 }
 
-function pairCard(p, isNow) {
+function pairCard(p, isNow, homework = []) {
   const head = [KEYCAPS[p.n] ?? `${p.n}.`, BELLS[p.n] && `<b>${BELLS[p.n]}</b>`, isNow && '← сейчас']
     .filter(Boolean)
     .join(' ');
@@ -210,7 +215,8 @@ function pairCard(p, isNow) {
     p.room && `${placeIcon(p.room)} ${escapeHtml(p.room)}`,
     p.teacher && `👤 ${escapeHtml(p.teacher)}`,
   ].filter(Boolean);
-  return `<blockquote>${[head, title, ...(details.length ? [details.join('   ')] : [])].join('\n')}</blockquote>`;
+  const hw = homework.map((n) => `📝 ${escapeHtml(n.text)}${n.authorName ? ` <i>— ${escapeHtml(n.authorName)}</i>` : ''}`);
+  return `<blockquote>${[head, title, ...(details.length ? [details.join('   ')] : []), ...hw].join('\n')}</blockquote>`;
 }
 
 /** «Окно» между парами: номера пар, которых нет, → время. */
@@ -221,7 +227,8 @@ function gapLine(fromN, toN) {
   return `<i>☕ окно${time}</i>`;
 }
 
-export function formatDay(date, nowMs = Date.now()) {
+/** notes — записи из базы; у пар показываются задания к этой дате. */
+export function formatDay(date, nowMs = Date.now(), notes = []) {
   const label = relativeDay(date, nowMs);
   const name = `${DAY_NAMES[weekday(date) - 1]}, ${dayMonth(date)}`;
   const header = `📅 <b>${label ? `${label} · ${name}` : capitalize(name)}</b>`;
@@ -244,13 +251,14 @@ export function formatDay(date, nowMs = Date.now()) {
   pairs.forEach((p, i) => {
     const prev = pairs[i - 1];
     if (prev && p.n - prev.n > 1) body.push(gapLine(prev.n + 1, p.n - 1));
-    body.push(pairCard(p, status?.kind === 'now' && status.pair === p));
+    const hw = notes.filter((n) => n.due === isoDate(date) && n.subject === baseSubject(p.subject));
+    body.push(pairCard(p, status?.kind === 'now' && status.pair === p, hw));
   });
 
   return `${intro.join('\n')}\n\n${body.join('\n')}`;
 }
 
-export function formatWeek(date, nowMs = Date.now()) {
+export function formatWeek(date, nowMs = Date.now(), notes = []) {
   const monday = mondayOf(date);
   const sunday = addDays(monday, 6);
   if (!isSemesterWeek(monday)) {
@@ -275,6 +283,7 @@ export function formatWeek(date, nowMs = Date.now()) {
       let line = `${time ? `<b>${hhmm(time.start)}</b>` : `${p.n}.`} ${escapeHtml(p.subject)}`;
       if (p.type) line += ` <i>${escapeHtml(shortType(p.type))}</i>`;
       if (p.room) line += ` · ${placeIcon(p.room)} ${escapeHtml(p.room)}`;
+      if (notes.some((n) => n.due === isoDate(day) && n.subject === baseSubject(p.subject))) line += ' 📝';
       return line;
     });
     parts.push(`${head}\n<blockquote>${lines.join('\n')}</blockquote>`);

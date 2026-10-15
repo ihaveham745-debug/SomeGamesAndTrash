@@ -2,17 +2,40 @@
 // Расписание и расчёты — те же модули, что у бота: при сборке tgcloud/lib/ копируется в dist/lib/.
 
 import {
-  DAY_NAMES, DAY_SHORT, addDays, bell, dateRange, dayMonth, dayStatus, duration, hhmm,
+  DAY_NAMES, DAY_SHORT, addDays, baseSubject, bell, dateRange, dayMonth, dayStatus, duration, hhmm,
   inSemester, isSemesterWeek, isoDate, minutesNow, mondayOf, outOfSemester, pairsFor,
   parityWord, parseDate, plural, shortType, today, weekNumber, weekday,
 } from './lib/schedule.js';
+import { MAX_NOTE_LENGTH, SUBJECTS, cleanText, homeworkFor, nextPairDate } from './lib/homework.js';
 
 const tg = window.Telegram?.WebApp;
 // telegram-web-app.js ставит platform 'unknown', если страницу открыли не в Telegram.
 const inTelegram = Boolean(tg) && tg.platform !== 'unknown';
 const $ = (id) => document.getElementById(id);
 
-const state = { view: 'day', date: firstDay() };
+const state = { view: 'day', date: firstDay(), notes: [], me: null };
+
+// Записывать и удалять задания можно только из Telegram: сервер проверяет, кто это.
+const canWrite = inTelegram && Boolean(tg.initData) && typeof tg.Serverless?.call === 'function';
+
+/** Вызов функции бота (tgcloud/endpoints/<name>.js). */
+function callBot(name, input = {}) {
+  return new Promise((resolve, reject) => {
+    tg.Serverless.call(name, input, (err, result) => (err ? reject(err) : resolve(result)));
+  });
+}
+
+async function loadNotes() {
+  if (!canWrite) return;
+  try {
+    const { notes, me } = await callBot('listNotes');
+    state.notes = notes;
+    state.me = me;
+    render();
+  } catch (err) {
+    console.warn('listNotes failed', err);
+  }
+}
 
 /** С чего открываться: сегодня, а в воскресенье (пар нет) — понедельник. */
 function firstDay() {
@@ -28,6 +51,8 @@ const ICON = {
   clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12.5 4 4 8-9"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>',
 };
 
 // --- Мелочи ---
@@ -109,7 +134,24 @@ function statusHtml(status, minutes) {
     <div class="main">${hhmm(status.start)} · ${esc(name)}</div></div></div>`;
 }
 
-function pairHtml(p, when, minutes) {
+function noteItemHtml(n) {
+  const mine = state.me !== null && n.authorId === state.me;
+  return `<div class="hw-item">
+    <div class="hw-body"><div class="hw-text">${esc(n.text)}</div>${n.authorName ? `<div class="hw-by">${esc(n.authorName)}</div>` : ''}</div>
+    ${mine ? `<button class="hw-del press" type="button" data-del="${n.id}" aria-label="Удалить">${ICON.trash}</button>` : ''}
+  </div>`;
+}
+
+function pairHomeworkHtml(p, iso) {
+  const items = homeworkFor(state.notes, iso, p.subject);
+  if (!items.length && !canWrite) return '';
+  const add = canWrite
+    ? `<button class="hw-add press" type="button" data-add="hw" data-subject="${esc(baseSubject(p.subject))}" data-due="${iso}">${ICON.plus}ДЗ</button>`
+    : '';
+  return `<div class="hw">${items.map(noteItemHtml).join('')}${add}</div>`;
+}
+
+function pairHtml(p, when, minutes, iso) {
   const time = bell(p.n);
   const { name, subgroup } = splitSubgroup(p.subject);
   const chips = (p.type ? p.type.split(', ') : []).map((t) => `<span class="chip ${typeClass(t)}">${esc(t)}</span>`);
@@ -124,6 +166,7 @@ function pairHtml(p, when, minutes) {
       <div class="subject">${esc(name)}</div>
       <div class="meta">${chips.join('')}${p.room ? placeHtml(p.room) : ''}</div>
       ${p.teacher ? `<div class="line">${ICON.person}${esc(p.teacher)}</div>` : ''}
+      ${pairHomeworkHtml(p, iso)}
     </div>${progress}
   </li>`;
 }
@@ -158,7 +201,7 @@ function dayHtml(date) {
     const time = bell(p.n);
     let when = '';
     if (isToday && time) when = minutes >= time.end ? 'past' : minutes >= time.start ? 'now' : '';
-    items.push(pairHtml(p, when, minutes));
+    items.push(pairHtml(p, when, minutes, isoDate(date)));
   });
 
   return `<div class="day-head">${title}<p class="summary">${pairsWord(pairs.length)}${span}</p></div>
@@ -182,7 +225,8 @@ function weekHtml(date) {
     const rows = pairs.map((p) => {
       const time = bell(p.n);
       const type = p.type ? ` <span class="t">${esc(shortType(p.type))}</span>` : '';
-      return `<li><b>${time ? hhmm(time.start) : `${p.n}.`}</b><span>${esc(p.subject)}${type}</span><span class="r">${esc(p.room ?? '')}</span></li>`;
+      const hw = homeworkFor(state.notes, isoDate(day), p.subject).length ? ' <span class="hw-mark">📝</span>' : '';
+      return `<li><b>${time ? hhmm(time.start) : `${p.n}.`}</b><span>${esc(p.subject)}${type}${hw}</span><span class="r">${esc(p.room ?? '')}</span></li>`;
     });
     sections.push(`<section class="wday glass${isToday ? ' is-today' : ''}">
       <button class="wday-head" type="button" data-date="${isoDate(day)}">
@@ -193,6 +237,136 @@ function weekHtml(date) {
     </section>`);
   }
   return `<div class="week">${sections.join('')}</div>`;
+}
+
+// --- Задания ---
+
+function tasksHtml() {
+  const from = isoDate(today());
+  const tasks = state.notes.filter((n) => n.due && n.due >= from).sort((a, b) => a.due.localeCompare(b.due) || a.id - b.id);
+  const notes = state.notes.filter((n) => !n.due).sort((a, b) => a.subject.localeCompare(b.subject, 'ru') || a.id - b.id);
+
+  const head = `<div class="day-head"><h2 class="day-title">Задания</h2>
+    <p class="summary">Общие для всей группы — видят все</p></div>
+    ${canWrite ? `<div class="actions">
+      <button class="action glass press" type="button" data-add="hw">${ICON.plus}Задание</button>
+      <button class="action glass press" type="button" data-add="note">${ICON.plus}Заметка</button>
+    </div>` : ''}`;
+  if (!canWrite) {
+    return head + emptyHtml('📝', 'Открой из Telegram', 'Задания хранятся у бота — их видно в приложении, открытом из чата с ботом');
+  }
+
+  const byDate = new Map();
+  for (const n of tasks) byDate.set(n.due, [...(byDate.get(n.due) ?? []), n]);
+  const taskCards = [...byDate].map(([due, list]) => {
+    const d = parseDate(due);
+    const label = relativeLabel(d);
+    return `<section class="wday glass">
+      <button class="wday-head" type="button" data-date="${due}">
+        <span class="name">${cap(DAY_NAMES[weekday(d) - 1])}, ${dayMonth(d)}</span>${label ? `<span class="badge">${label}</span>` : ''}
+        <span class="more">${ICON.chevron}</span>
+      </button>
+      <div class="note-list">${list.map((n) => `<div class="note-subject">${esc(n.subject)}</div>${noteItemHtml(n)}`).join('')}</div>
+    </section>`;
+  });
+
+  const bySubject = new Map();
+  for (const n of notes) bySubject.set(n.subject, [...(bySubject.get(n.subject) ?? []), n]);
+  const noteCards = [...bySubject].map(([subject, list]) => `<section class="wday glass">
+    <div class="wday-head static"><span class="name">${esc(subject)}</span></div>
+    <div class="note-list">${list.map(noteItemHtml).join('')}</div>
+  </section>`);
+
+  return `${head}
+    <h3 class="section">Домашние задания</h3>
+    ${taskCards.length ? `<div class="week">${taskCards.join('')}</div>` : '<p class="muted">Пока ничего не задано 🎉</p>'}
+    <h3 class="section">Заметки по предметам</h3>
+    ${noteCards.length ? `<div class="week">${noteCards.join('')}</div>` : '<p class="muted">Заметок пока нет</p>'}`;
+}
+
+// --- Окно добавления ---
+
+function openComposer({ kind, subject = null, due = null }) {
+  closeComposer();
+  const fixed = Boolean(subject && due);
+  const options = SUBJECTS.map((s) => `<option${s === subject ? ' selected' : ''}>${esc(s)}</option>`).join('');
+  const root = document.createElement('div');
+  root.className = 'sheet-backdrop';
+  root.innerHTML = `<form class="sheet glass blur" autocomplete="off">
+    <div class="sheet-title">${kind === 'hw' ? 'Домашнее задание' : 'Заметка к предмету'}</div>
+    ${fixed ? `<div class="sheet-subject">${esc(subject)}</div>`
+      : `<select class="field" name="subject"><option value="" disabled${subject ? '' : ' selected'}>Предмет…</option>${options}</select>`}
+    <div class="sheet-due"></div>
+    <textarea class="field" name="text" rows="4" maxlength="${MAX_NOTE_LENGTH}"
+      placeholder="${kind === 'hw' ? 'Что задали? Например: №5–10, стр. 42' : 'Например: формулы на стр. 12'}"></textarea>
+    <div class="sheet-error" role="alert"></div>
+    <div class="sheet-buttons">
+      <button class="btn press" type="button" data-close>Отмена</button>
+      <button class="btn primary press" type="submit">Сохранить</button>
+    </div>
+  </form>`;
+  document.body.append(root);
+
+  const form = root.querySelector('form');
+  const dueBox = root.querySelector('.sheet-due');
+  let currentDue = due;
+  const updateDue = () => {
+    if (kind !== 'hw') return;
+    const subj = fixed ? subject : form.subject.value;
+    if (!fixed) currentDue = subj ? isoDate(nextPairDate(subj) ?? today()) : null;
+    if (!subj) {
+      dueBox.textContent = 'Запишется к ближайшей паре по предмету';
+    } else if (currentDue) {
+      const d = parseDate(currentDue);
+      dueBox.textContent = `К паре: ${DAY_NAMES[weekday(d) - 1]}, ${dayMonth(d)}`;
+    }
+  };
+  updateDue();
+  form.subject?.addEventListener('change', updateDue);
+  form.text.focus();
+
+  root.addEventListener('click', (e) => {
+    if (e.target === root || e.target.closest('[data-close]')) closeComposer();
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const subj = fixed ? subject : form.subject.value;
+    const text = cleanText(form.text.value);
+    const error = root.querySelector('.sheet-error');
+    if (!subj) return void (error.textContent = 'Выбери предмет');
+    if (!text) return void (error.textContent = kind === 'hw' ? 'Напиши, что задали' : 'Пустая заметка');
+    const save = form.querySelector('[type="submit"]');
+    save.disabled = true;
+    try {
+      const { note } = await callBot('addNote', { subject: subj, due: kind === 'hw' ? currentDue : null, text });
+      state.notes.push(note);
+      try { tg.HapticFeedback?.notificationOccurred('success'); } catch { /* старый клиент */ }
+      closeComposer();
+      render();
+    } catch (err) {
+      error.textContent = err?.message || 'Не получилось сохранить';
+      save.disabled = false;
+    }
+  });
+}
+
+function closeComposer() {
+  document.querySelector('.sheet-backdrop')?.remove();
+}
+
+async function deleteNote(id) {
+  const ok = await new Promise((resolve) => {
+    if (tg?.showConfirm && inTelegram) tg.showConfirm('Удалить запись?', resolve);
+    else resolve(window.confirm('Удалить запись?'));
+  });
+  if (!ok) return;
+  try {
+    await callBot('deleteNote', { id });
+    state.notes = state.notes.filter((n) => n.id !== id);
+    render();
+  } catch (err) {
+    if (tg?.showAlert) tg.showAlert(err?.message || 'Не получилось удалить');
+  }
 }
 
 // --- Шапка, таб-бар и отрисовка ---
@@ -244,7 +418,8 @@ function renderChrome() {
 /** anim: 'fwd' / 'back' — въезд справа/слева, 'fade' — проявление, 'still' — без анимации. */
 function render(anim = 'still') {
   renderChrome();
-  const html = state.view === 'day' ? dayHtml(state.date) : weekHtml(state.date);
+  document.body.dataset.view = state.view;
+  const html = { day: dayHtml, week: weekHtml, tasks: tasksHtml }[state.view](state.date);
   $('content').innerHTML = `<div class="view ${anim}">${html}</div>`;
 }
 
@@ -270,9 +445,12 @@ function go(date, view = state.view) {
 // --- События ---
 
 document.addEventListener('click', (e) => {
-  const el = e.target.closest('[data-date], [data-view], #prev-week, #next-week, #to-today');
+  if (e.target.closest('.sheet-backdrop')) return;
+  const el = e.target.closest('[data-add], [data-del], [data-date], [data-view], #prev-week, #next-week, #to-today');
   if (!el) return;
-  if (el.dataset.date) go(parseDate(el.dataset.date), 'day');
+  if (el.dataset.add) openComposer({ kind: el.dataset.add, subject: el.dataset.subject, due: el.dataset.due });
+  else if (el.dataset.del) deleteNote(Number(el.dataset.del));
+  else if (el.dataset.date) go(parseDate(el.dataset.date), 'day');
   else if (el.dataset.view) go(state.date, el.dataset.view);
   else if (el.id === 'prev-week') go(addDays(state.date, -7));
   else if (el.id === 'next-week') go(addDays(state.date, 7));
@@ -280,7 +458,9 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeComposer();
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  if (e.target.closest?.('input, textarea, select') || state.view === 'tasks') return;
   const forward = e.key === 'ArrowRight';
   go(state.view === 'week' ? addDays(state.date, forward ? 7 : -7) : stepDay(state.date, forward));
 });
@@ -289,7 +469,9 @@ document.addEventListener('keydown', (e) => {
 let touch = null;
 document.addEventListener('touchstart', (e) => {
   const t = e.touches[0];
-  touch = { x: t.clientX, y: t.clientY, strip: Boolean(e.target.closest('.panel')) };
+  touch = e.target.closest('.sheet-backdrop') || state.view === 'tasks'
+    ? null
+    : { x: t.clientX, y: t.clientY, strip: Boolean(e.target.closest('.panel')) };
 }, { passive: true });
 document.addEventListener('touchend', (e) => {
   if (!touch) return;
@@ -321,7 +503,10 @@ function tick() {
 }
 setInterval(tick, 30_000);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) tick();
+  if (!document.hidden) {
+    tick();
+    loadNotes();
+  }
 });
 
 // --- Тема и Telegram ---
@@ -349,3 +534,4 @@ if (inTelegram) {
 document.body.classList.add('no-anim');
 render('fade');
 requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('no-anim')));
+loadNotes();

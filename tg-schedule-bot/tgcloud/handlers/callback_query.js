@@ -3,9 +3,10 @@
 
 import { api, BotApiError } from 'sdk';
 import { viewFor } from '../lib/bot.js';
+import { store } from '../lib/notes.js';
 
 export default async function (query, ctx) {
-  const view = viewFor(query.data);
+  const view = await viewFor(query.data, Date.now(), store);
   let notice;
 
   if (view && query.message) {

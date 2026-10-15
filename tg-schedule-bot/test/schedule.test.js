@@ -88,11 +88,11 @@ test('что сейчас: пара, перерыв, конец дня', () => {
   assert.doesNotMatch(formatDay(parseDate('2026-10-15'), at(8, 30)), /🟢|⏳|✅|← сейчас/);
 });
 
-test('кнопки под сообщением листают дни и недели', () => {
+test('кнопки под сообщением листают дни и недели', async () => {
   const now = at(12, 0);
   const buttons = (view) => view.reply_markup.inline_keyboard.flat().map((b) => `${b.text}|${b.callback_data}`);
 
-  const todayView = replyTo({ text: '/today', chat: { type: 'private' } }, now);
+  const todayView = await replyTo({ text: '/today', chat: { type: 'private' } }, now);
   assert.deepEqual(buttons(todayView), [
     '◀️ Вт 13.10|d:2026-10-13',
     'Чт 15.10 ▶️|d:2026-10-15',
@@ -100,32 +100,32 @@ test('кнопки под сообщением листают дни и неде
     '🗓 Вся неделя|w:2026-10-14',
   ]);
   // воскресенье пропускается
-  assert.deepEqual(buttons(viewFor('d:2026-10-17', now)).slice(0, 3), [
+  assert.deepEqual(buttons((await viewFor('d:2026-10-17', now))).slice(0, 3), [
     '◀️ Пт 16.10|d:2026-10-16',
     'Пн 19.10 ▶️|d:2026-10-19',
     '📅 Сегодня|d:today',
   ]);
-  assert.equal(buttons(viewFor('d:2026-10-19', now))[0], '◀️ Сб 17.10|d:2026-10-17');
+  assert.equal(buttons((await viewFor('d:2026-10-19', now)))[0], '◀️ Сб 17.10|d:2026-10-17');
 
-  const week = buttons(viewFor('w:2026-10-14', now));
+  const week = buttons((await viewFor('w:2026-10-14', now)));
   assert.deepEqual(week.slice(0, 6), [
     'Пн|d:2026-10-12', 'Вт|d:2026-10-13', '•Ср•|d:2026-10-14',
     'Чт|d:2026-10-15', 'Пт|d:2026-10-16', 'Сб|d:2026-10-17',
   ]);
   assert.deepEqual(week.slice(6), ['◀️ 6-я нед.|w:2026-10-05', '🔄 Обновить|w:today', '8-я нед. ▶️|w:2026-10-19']);
   // за пределами семестра номеров недель нет
-  assert.equal(buttons(viewFor('w:2026-08-31', now))[6], '◀️|w:2026-08-24');
-  assert.equal(buttons(viewFor('w:2026-12-28', now))[8], '▶️|w:2027-01-04');
+  assert.equal(buttons((await viewFor('w:2026-08-31', now)))[6], '◀️|w:2026-08-24');
+  assert.equal(buttons((await viewFor('w:2026-12-28', now)))[8], '▶️|w:2027-01-04');
 
-  assert.match(viewFor('d:2026-10-16', now).text, /Пятница, 16 октября/);
+  assert.match((await viewFor('d:2026-10-16', now)).text, /Пятница, 16 октября/);
   // «Сегодня» — день нажатия, а не день, когда отправили сообщение
   const thursday = Date.UTC(2026, 9, 15, 3);
-  assert.match(viewFor('d:today', thursday).text, /Сегодня · четверг, 15 октября/);
-  assert.match(viewFor('w:today', Date.UTC(2026, 9, 20, 3)).text, /8-я неделя, чётная/);
-  assert.equal(buttons(replyTo({ text: '/parity', chat: { type: 'private' } }, now))[0], '🗓 Расписание на неделю|w:today');
-  assert.equal(viewFor('d:2026-02-31', now), null);
-  assert.equal(viewFor('x:2026-10-14', now), null);
-  assert.equal(viewFor(undefined, now), null);
+  assert.match((await viewFor('d:today', thursday)).text, /Сегодня · четверг, 15 октября/);
+  assert.match((await viewFor('w:today', Date.UTC(2026, 9, 20, 3))).text, /8-я неделя, чётная/);
+  assert.equal(buttons((await replyTo({ text: '/parity', chat: { type: 'private' } }, now)))[0], '🗓 Расписание на неделю|w:today');
+  assert.equal(await viewFor('d:2026-02-31', now), null);
+  assert.equal(await viewFor('x:2026-10-14', now), null);
+  assert.equal(await viewFor(undefined, now), null);
 });
 
 test('распознавание команд и кнопок', () => {
@@ -145,14 +145,14 @@ test('распознавание команд и кнопок', () => {
   assert.equal(commandMention(undefined), null);
 });
 
-test('в группе бот молчит на обычные сообщения, в личке подсказывает', () => {
-  assert.equal(replyTo({ text: 'привет', chat: { type: 'group' } }), null);
-  assert.match(replyTo({ text: 'привет', chat: { type: 'private' } }).text, /help/);
-  assert.match(replyTo({ sticker: {}, chat: { type: 'private' } }).text, /help/);
-  const parity = replyTo({ text: '/parity', chat: { type: 'group' } }, Date.UTC(2026, 9, 14, 3));
+test('в группе бот молчит на обычные сообщения, в личке подсказывает', async () => {
+  assert.equal(await replyTo({ text: 'привет', chat: { type: 'group' } }), null);
+  assert.match((await replyTo({ text: 'привет', chat: { type: 'private' } })).text, /help/);
+  assert.match((await replyTo({ sticker: {}, chat: { type: 'private' } })).text, /help/);
+  const parity = (await replyTo({ text: '/parity', chat: { type: 'group' } }, Date.UTC(2026, 9, 14, 3)));
   assert.match(parity.text, /7-я неделя — нечётная[\s\S]*19–25 октября\) — 8-я, чётная/);
   // /start и /help возвращают обычную клавиатуру с кнопками
-  assert.ok(replyTo({ text: '/start', chat: { type: 'private' } }).reply_markup.keyboard);
+  assert.ok((await replyTo({ text: '/start', chat: { type: 'private' } })).reply_markup.keyboard);
 });
 
 test('dayStatus — что идёт сейчас (общее для бота и Mini App)', () => {
@@ -165,11 +165,16 @@ test('dayStatus — что идёт сейчас (общее для бота и 
   assert.equal(dayStatus([], 600), null);
 });
 
-test('Mini App импортирует только то, что есть в lib/schedule.js', () => {
+test('Mini App импортирует только то, что есть в lib/schedule.js и lib/homework.js', async () => {
   const source = readFileSync(new URL('../webapp/app.js', import.meta.url), 'utf8');
   const block = /import\s*\{([^}]*)\}\s*from\s*'\.\/lib\/schedule\.js'/.exec(source);
   assert.ok(block, 'в app.js нет импорта из ./lib/schedule.js');
   const names = block[1].split(',').map((s) => s.trim()).filter(Boolean);
   const missing = names.filter((name) => !(name in schedule));
   assert.deepEqual(missing, []);
+
+  const hw = /import\s*\{([^}]*)\}\s*from\s*'\.\/lib\/homework\.js'/.exec(source);
+  assert.ok(hw, 'в app.js нет импорта из ./lib/homework.js');
+  const homework = await import('../tgcloud/lib/homework.js');
+  assert.deepEqual(hw[1].split(',').map((x) => x.trim()).filter(Boolean).filter((name) => !(name in homework)), []);
 });

@@ -4,9 +4,10 @@ import { api } from 'sdk';
 import {
   COMMANDS, DESCRIPTION, MENU_BUTTON, SHORT_DESCRIPTION, actionFor, commandMention, replyTo,
 } from '../lib/bot.js';
+import { store } from '../lib/notes.js';
 
 export default async function (message, ctx) {
-  const reply = replyTo(message);
+  const reply = await replyTo(message, Date.now(), store);
   if (!reply) return;
 
   // «/help@другой_бот» в группе — не нам (бот-админ получает все сообщения группы).

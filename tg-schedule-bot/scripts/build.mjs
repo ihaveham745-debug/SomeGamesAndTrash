@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(root, 'dist');
-const SHARED = ['schedule.js', 'timetable.js'];
+const SHARED = ['schedule.js', 'timetable.js', 'homework.js'];
 
 rmSync(out, { recursive: true, force: true });
 cpSync(join(root, 'webapp'), out, { recursive: true });
