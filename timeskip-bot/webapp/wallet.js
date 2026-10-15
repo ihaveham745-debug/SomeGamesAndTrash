@@ -1,12 +1,11 @@
 // Кошелёк фишек. Фишки игровые: их нельзя купить или вывести.
 // Храним в CloudStorage Телеграма (тот же баланс на всех устройствах) и в localStorage.
 
-import { countUp, fmt, tg } from './ui.js';
+import { fmt, tg } from './ui.js';
 
 const KEY = 'balance';
 export const START = 1000;
 export const REFILL = 1000;
-export const MIN_BET = 10;
 
 function readLocal() {
   try {
@@ -22,7 +21,6 @@ const cloud = tg?.isVersionAtLeast?.('6.9') ? tg.CloudStorage : null;
 
 export function createWallet() {
   let balance = readLocal() ?? START;
-  let shown = balance;
   let dirty = false;
   let saveTimer;
   const valueEl = document.getElementById('balance-value');
@@ -58,19 +56,12 @@ export function createWallet() {
       save();
     },
     render({ bump = false } = {}) {
-      valueEl.classList.remove('skel');
-      document.documentElement.classList.toggle('broke', balance < MIN_BET);
-      if (bump && balance > shown) {
-        countUp(valueEl, balance, { from: shown, format: fmt });
+      valueEl.textContent = fmt(balance);
+      if (bump) {
         pill.classList.remove('bump');
         void pill.offsetWidth;
         pill.classList.add('bump');
-      } else {
-        cancelAnimationFrame(valueEl._raf);
-        valueEl.textContent = fmt(balance);
       }
-      shown = balance;
-      window.dispatchEvent(new Event('wallet'));
     },
     /** Подтянуть баланс из облака (до первой ставки, чтобы не затереть её). */
     load() {

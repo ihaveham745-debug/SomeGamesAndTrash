@@ -6,23 +6,18 @@
   <meta name="color-scheme" content="dark">
   <title>TimeSkip</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <meta name="theme-color" content="#111A24">
-  <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="fonts/inter-cyrillic-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
   <script type="module" src="app.js"></script>
 </head>
 <body>
   <header class="top">
     <button class="back press" id="back" type="button" aria-label="Назад" hidden>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg>
     </button>
-    <span class="title-icon" id="title-icon" aria-hidden="true"></span>
-    <div class="title-block"><h1 id="title">TimeSkip</h1><p id="title-meta" hidden></p></div>
+    <h1 id="title">TimeSkip</h1>
     <div class="balance" id="balance" aria-label="Фишки">
-      <span class="balance-label">Фишки</span><b id="balance-value" class="skel"></b>
+      <span class="coin" aria-hidden="true"></span><b id="balance-value">…</b>
     </div>
-    <button class="get press" id="get" type="button">Взять 1&nbsp;000</button>
   </header>
 
   <main id="screen"></main>
