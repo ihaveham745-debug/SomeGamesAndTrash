@@ -1,7 +1,7 @@
 // Блоки (как Block Blast): перетаскивай фигуры на поле, собирай целые ряды и столбцы.
 // Без фишек — играем на очки и рекорд.
 
-import { PIECES, SIZE, canPlace, fullLines, newGame, play } from '../lib/blocks.js';
+import { COMBO_WINDOW, PIECES, SIZE, canPlace, fullLines, newGame, play } from '../lib/blocks.js';
 import { fmt, haptic, tg } from '../ui.js';
 
 export const title = 'Блоки';
@@ -58,7 +58,8 @@ export function mount(root) {
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4v4h4"/></svg>
       </button>
     </section>
-    <section class="blocks-board-wrap">
+    <div class="combo off" id="combo" aria-live="polite"></div>
+    <section class="blocks-board-wrap" id="wrap">
       <div class="blocks-board" id="board" role="grid" aria-label="Поле 8 на 8">
         ${Array.from({ length: SIZE * SIZE }, () => '<div class="bcell"></div>').join('')}
       </div>
@@ -70,7 +71,7 @@ export function mount(root) {
       </div>
     </section>
     <section class="blocks-tray" id="tray" aria-label="Фигуры"></section>
-    <p class="note">Перетащи фигуру на поле. Целый ряд или столбец сгорает.</p>`;
+    <p class="note">Перетащи фигуру на поле. Целый ряд или столбец сгорает. Сжигай линии ход за ходом — растёт комбо.</p>`;
 
   view = {
     board: root.querySelector('#board'),
@@ -79,6 +80,8 @@ export function mount(root) {
     score: root.querySelector('#score'),
     best: root.querySelector('#best'),
     float: root.querySelector('#float'),
+    combo: root.querySelector('#combo'),
+    wrap: root.querySelector('#wrap'),
     over: root.querySelector('#over'),
     overText: root.querySelector('#over-text'),
   };
@@ -111,7 +114,26 @@ function renderAll() {
   renderBoard(st.board);
   renderTray();
   renderScore();
+  renderCombo();
   renderOver();
+}
+
+/** Плашка серии: множитель и сколько ходов без сожжённой линии осталось до её конца. */
+function renderCombo(bump = false) {
+  if (!view) return;
+  const el = view.combo;
+  const on = st.combo > 0 && !st.over;
+  el.classList.toggle('off', !on);
+  if (!on) return;
+  const left = COMBO_WINDOW - st.sinceClear;
+  const dots = Array.from({ length: COMBO_WINDOW }, (_, i) => `<i class="${i < left ? '' : 'used'}"></i>`).join('');
+  el.className = `combo hot${Math.min(st.combo, 4)}`;
+  el.innerHTML = `<span>🔥 Комбо <b>×${st.combo}</b></span><span class="combo-left" aria-label="Осталось ходов: ${left}">${dots}</span>`;
+  el.title = 'Сожги линию до того, как погаснут точки, — множитель вырастет';
+  if (bump) {
+    void el.offsetWidth;
+    el.classList.add('bump');
+  }
 }
 
 function renderBoard(board) {
@@ -282,12 +304,21 @@ async function place(index, row, col) {
     for (const r of last.rows) for (let c = 0; c < SIZE; c++) burning.add(r * SIZE + c);
     for (const c of last.cols) for (let r = 0; r < SIZE; r++) burning.add(r * SIZE + c);
     burning.forEach((i) => view?.cells[i].classList.add('burn'));
-    haptic(lines > 1 ? 'heavy' : 'medium');
-    floatText(last);
+    const big = last.combo >= 3 || lines >= 3 || last.cleared;
+    haptic(big ? 'heavy' : lines > 1 || last.combo > 1 ? 'medium' : 'light');
+    if (big) {
+      haptic('success');
+      view?.wrap.classList.remove('shake');
+      void view?.wrap.offsetWidth;
+      view?.wrap.classList.add('shake');
+    }
+    floatText(last, lines);
     await new Promise((resolve) => setTimeout(resolve, 320));
   }
   renderBoard(st.board);
   renderScore();
+  renderCombo(lines > 0);
+  if (prev.combo > 1 && st.combo === 0) toastCombo(prev.combo);
 
   if (st.over) {
     haptic('error');
@@ -296,13 +327,28 @@ async function place(index, row, col) {
   }
 }
 
-function floatText(last) {
+const PRAISE = { 2: 'Отлично!', 3: 'Супер!', 4: 'Невероятно!' };
+
+function floatText(last, lines) {
   if (!view) return;
-  const parts = [`+${fmt(last.points)}`];
-  if (last.cleared) parts.push('Чисто!');
-  else if (last.combo > 1) parts.push(`Комбо ×${last.combo}`);
-  view.float.innerHTML = parts.map((p, i) => `<span class="${i ? 'tag' : ''}">${p}</span>`).join('');
+  const parts = [];
+  const praise = last.cleared ? 'Чисто!' : PRAISE[Math.min(lines, 4)] ?? (last.combo >= 4 ? 'В ударе!' : '');
+  if (praise) parts.push(`<span class="praise">${praise}</span>`);
+  parts.push(`<span>+${fmt(last.points)}</span>`);
+  if (last.combo > 1) parts.push(`<span class="tag combo-tag">🔥 Комбо ×${last.combo}</span>`);
+  view.float.innerHTML = parts.join('');
+  view.float.classList.toggle('big', last.combo >= 3 || lines >= 3 || last.cleared);
   view.float.classList.remove('show');
   void view.float.offsetWidth;
   view.float.classList.add('show');
+}
+
+function toastCombo(was) {
+  if (!view) return;
+  view.combo.classList.remove('off');
+  view.combo.className = 'combo';
+  view.combo.innerHTML = `<span class="combo-hint">Комбо ×${was} сгорело</span>`;
+  setTimeout(() => {
+    if (view && st.combo === 0) view.combo.classList.add('off');
+  }, 1400);
 }

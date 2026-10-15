@@ -6,7 +6,7 @@ import { randInt } from './random.js';
 
 export const SIZE = 8;
 export const COLORS = 7; // цвета фигур: 1…7, 0 — пустая клетка
-const COMBO_WINDOW = 3; // комбо держится, пока сжигаешь линию хотя бы раз за 3 хода
+export const COMBO_WINDOW = 3; // комбо держится, пока сжигаешь линию хотя бы раз за 3 хода
 const CLEAR_BOARD_BONUS = 300;
 
 // --- Фигуры ---

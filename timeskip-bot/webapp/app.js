@@ -61,7 +61,7 @@ const TILES = [
   { id: 'blackjack', name: 'Блэкджек', sub: 'Набери 21, но не больше', art: '<div class="art-cards"><i>A<b>♠</b></i><i class="r">K<b>♥</b></i></div>' },
   { id: 'roulette', name: 'Рулетка', sub: 'Красное или чёрное', art: '<div class="art-wheel"></div>' },
   { id: 'poker', name: 'Покер', sub: 'Видеопокер, валеты и выше', art: '<div class="art-suits"><b>♠</b><b class="r">♥</b><b class="r">♦</b><b>♣</b></div>' },
-  { id: 'blocks', name: 'Блоки', sub: 'Как Block Blast: собирай линии на рекорд. Без фишек', art: '<div class="art-blocks">' + 'c3,c3,,c6,c3,c3,c6,c6,c1,,c6,c4,c1,c1,c1,c4'.split(',').map((c) => `<i class="${c}"></i>`).join('') + '</div>' },
+  { id: 'blocks', name: 'Блоки', sub: 'Как Block Blast: собирай линии на рекорд, без фишек', art: '<div class="art-blocks">' + 'c3,c3,,c6,c3,c3,c6,c6,c1,,c6,c4,c1,c1,c1,c4'.split(',').map((c) => `<i class="${c}"></i>`).join('') + '</div>' },
 ];
 
 function renderHome() {
@@ -75,8 +75,7 @@ function renderHome() {
       ${TILES.map((t) => `
         <button type="button" class="tile tile-${t.id} press" data-game="${t.id}">
           <div class="tile-art" aria-hidden="true">${t.art}</div>
-          <b>${t.name}</b>
-          <span>${t.sub}</span>
+          <div class="tile-caption"><b>${t.name}</b><span>${t.sub}</span></div>
         </button>`).join('')}
     </div>
     <p class="note">Фишки ненастоящие: их нельзя купить, продать или вывести. Играем просто так.</p>`;
@@ -125,7 +124,7 @@ tg?.BackButton?.onClick(goHome);
 if (tg) {
   tg.ready();
   tg.expand();
-  const color = '#0b0e17';
+  const color = '#04050a';
   try {
     if (tg.isVersionAtLeast('6.1')) {
       tg.setHeaderColor(tg.isVersionAtLeast('6.9') ? color : 'bg_color');
