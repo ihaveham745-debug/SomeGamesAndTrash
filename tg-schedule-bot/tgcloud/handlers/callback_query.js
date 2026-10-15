@@ -4,10 +4,9 @@
 import { api, BotApiError } from 'sdk';
 import { viewFor } from '../lib/bot.js';
 import { store } from '../lib/notes.js';
-import { track } from '../lib/stats.js';
 
 export default async function (query, ctx) {
-  const [view] = await Promise.all([viewFor(query.data, Date.now(), store), track(query.from)]);
+  const view = await viewFor(query.data, Date.now(), store);
   let notice;
 
   if (view && query.message) {

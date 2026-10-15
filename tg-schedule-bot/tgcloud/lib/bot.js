@@ -5,12 +5,11 @@
 // Задания и заметки бот берёт из store (в боте — база, lib/notes.js; в тестах — массив):
 //   store.range(from, to) — записи с due в этих датах ('ГГГГ-ММ-ДД' включительно);
 //   store.upcoming(from)  — задания с due >= from и все заметки (due = null);
-//   store.add(note)       — сохранить запись;
-//   store.stats()         — { users: [...], tasks, notes } для /stats (lib/stats.js).
+//   store.add(note)       — сохранить запись.
 
 import {
-  DAY_SHORT, addDays, dayMonth, ddmm, escapeHtml, formatDay, formatParity, formatWeek, hhmm,
-  isSemesterWeek, isoDate, minutesNow, mondayOf, parseDate, plural, today, weekNumber, weekday,
+  DAY_SHORT, addDays, dayMonth, ddmm, escapeHtml, formatDay, formatParity, formatWeek,
+  isSemesterWeek, isoDate, mondayOf, parseDate, today, weekNumber, weekday,
 } from './schedule.js';
 import { GROUP, MINI_APP_URL } from './timetable.js';
 import { cleanText, findSubject, nextPairDate, validateNote } from './homework.js';
@@ -21,7 +20,6 @@ export const NO_STORE = {
   add: async () => {
     throw new Error('store is not available');
   },
-  stats: async () => null,
 };
 
 // Тексты кнопок не меняй: по ним узнаём нажатия, а у людей уже стоит эта клавиатура.
@@ -51,7 +49,6 @@ export const COMMANDS = [
   { command: 'parity', description: '🔢 Чётная или нечётная неделя' },
   { command: 'dz', description: '📝 Домашние задания (или /dz мат: текст)' },
   { command: 'note', description: '🗒 Заметка к предмету: /note хим: текст' },
-  { command: 'stats', description: '📊 Кто пользуется ботом' },
   { command: 'help', description: '💬 Что умеет бот' },
 ];
 
@@ -85,8 +82,6 @@ const HELP_TEXT = [
   '',
   'Записать ДЗ к ближайшей паре: <code>/dz мат: №5–10</code>',
   'Заметка к предмету: <code>/note хим: формулы на стр. 12</code>',
-  '',
-  '📊 /stats — сколько человек пользуется ботом',
   '',
   'Стрелки ◀️ ▶️ под расписанием листают дни и недели прямо в сообщении.',
   'А кнопка <b>«Расписание»</b> слева от поля ввода открывает приложение — там всё то же, но удобнее.',
@@ -164,8 +159,7 @@ const USAGE = {
   note: 'Заметка: <code>/note предмет: текст</code>\nНапример: <code>/note хим: формулы на стр. 12</code>',
 };
 
-/** Как подписать человека: «Аня П.», иначе @username. */
-export function authorName(user) {
+function authorName(user) {
   if (!user) return null;
   return [user.first_name, user.last_name && `${user.last_name[0]}.`].filter(Boolean).join(' ') || user.username || null;
 }
@@ -249,61 +243,6 @@ async function homeworkCommand(kind, args, message, nowMs, store) {
   };
 }
 
-// --- Статистика ---
-
-const STATS_LIST_LIMIT = 30;
-
-/** «сегодня 10:15», «вчера 18:40», «3 дня назад», «12 окт.» */
-function seenAgo(seenMs, nowMs) {
-  const day = today(seenMs);
-  const days = Math.round((today(nowMs) - day) / 86400000);
-  const time = hhmm(minutesNow(seenMs));
-  if (days <= 0) return `сегодня ${time}`;
-  if (days === 1) return `вчера ${time}`;
-  if (days < 7) return `${days} ${plural(days, 'день', 'дня', 'дней')} назад`;
-  return dayMonth(day);
-}
-
-async function statsView(nowMs, store) {
-  let data;
-  try {
-    data = await store.stats();
-  } catch (err) {
-    console.error('store.stats failed', err);
-  }
-  if (!data) return { text: '😕 Статистика сейчас недоступна, попробуй чуть позже.' };
-
-  const users = data.users;
-  const todayMs = today(nowMs).getTime();
-  const weekAgo = nowMs / 1000 - 7 * 86400;
-  const count = (pred) => users.filter(pred).length;
-  const activeToday = count((u) => today(u.lastSeen * 1000).getTime() === todayMs);
-  const activeWeek = count((u) => u.lastSeen >= weekAgo);
-  const newWeek = count((u) => u.firstSeen >= weekAgo);
-  const appUsers = count((u) => u.appOpens > 0);
-  const n = users.length;
-
-  const lines = [
-    `📊 <b>Статистика бота ${GROUP}</b>`,
-    '',
-    `👥 Всего: <b>${n}</b> ${plural(n, 'человек', 'человека', 'человек')}`,
-    `🟢 Сегодня: <b>${activeToday}</b> · за неделю: <b>${activeWeek}</b>`,
-    `🆕 Новых за неделю: <b>${newWeek}</b>`,
-    `📱 Открывали приложение: <b>${appUsers}</b>`,
-    `📝 Заданий записано: <b>${data.tasks}</b> · 🗒 заметок: <b>${data.notes}</b>`,
-  ];
-  if (n) {
-    lines.push('', '<b>Кто заходил</b>');
-    for (const u of users.slice(0, STATS_LIST_LIMIT)) {
-      const name = escapeHtml(u.name || (u.username ? `@${u.username}` : 'Без имени'));
-      const app = u.appOpens > 0 ? ' 📱' : '';
-      lines.push(`• ${name}${app} — ${seenAgo(u.lastSeen * 1000, nowMs)}`);
-    }
-    if (n > STATS_LIST_LIMIT) lines.push(`…и ещё ${n - STATS_LIST_LIMIT}`);
-  }
-  return { text: lines.join('\n') };
-}
-
 function parityView(nowMs) {
   return {
     text: formatParity(today(nowMs)),
@@ -323,7 +262,6 @@ const ACTIONS = {
   parity: async (now) => parityView(now),
   dz: (now, store, message, args) => homeworkCommand('hw', args, message, now, store),
   note: (now, store, message, args) => homeworkCommand('note', args, message, now, store),
-  stats: (now, store) => statsView(now, store),
 };
 
 const COMMAND = /^\/([a-z_]+)(?:@(\w+))?(?:\s|$)/i;
