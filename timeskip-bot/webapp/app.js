@@ -1,13 +1,14 @@
 // TimeSkip — мини-игры, чтобы убить время. Экран «Игры» и переходы между играми.
 
 import * as blackjack from './games/blackjack.js';
+import * as blocks from './games/blocks.js';
 import * as poker from './games/poker.js';
 import * as roulette from './games/roulette.js';
 import * as slots from './games/slots.js';
 import { fmt, haptic, toast, tg } from './ui.js';
 import { REFILL, createWallet } from './wallet.js';
 
-const GAMES = { slots, blackjack, roulette, poker };
+const GAMES = { slots, blackjack, roulette, poker, blocks };
 const MIN_BET = 10;
 
 const screen = document.getElementById('screen');
@@ -60,13 +61,14 @@ const TILES = [
   { id: 'blackjack', name: 'Блэкджек', sub: 'Набери 21, но не больше', art: '<div class="art-cards"><i>A<b>♠</b></i><i class="r">K<b>♥</b></i></div>' },
   { id: 'roulette', name: 'Рулетка', sub: 'Красное или чёрное', art: '<div class="art-wheel"></div>' },
   { id: 'poker', name: 'Покер', sub: 'Видеопокер, валеты и выше', art: '<div class="art-suits"><b>♠</b><b class="r">♥</b><b class="r">♦</b><b>♣</b></div>' },
+  { id: 'blocks', name: 'Блоки', sub: 'Как Block Blast: собирай линии на рекорд. Без фишек', art: '<div class="art-blocks">' + 'c3,c3,,c6,c3,c3,c6,c6,c1,,c6,c4,c1,c1,c1,c4'.split(',').map((c) => `<i class="${c}"></i>`).join('') + '</div>' },
 ];
 
 function renderHome() {
   screen.innerHTML = `
     <section class="hero">
       <h2>Убей время</h2>
-      <p>Четыре игры на игровые фишки. Выбирай.</p>
+      <p>Пять игр, чтобы скоротать время. Выбирай.</p>
     </section>
     ${wallet.balance < MIN_BET ? `<button type="button" class="refill press" data-act="refill"><span class="coin"></span>Фишки закончились — взять ещё ${fmt(REFILL)}</button>` : ''}
     <div class="tiles">
