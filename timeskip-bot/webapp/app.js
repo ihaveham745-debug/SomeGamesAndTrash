@@ -6,6 +6,7 @@ import * as chess from './games/chess.js';
 import * as poker from './games/poker.js';
 import * as roulette from './games/roulette.js';
 import * as slots from './games/slots.js';
+import { lang, setLang, t } from './i18n.js';
 import { fmt, haptic, jojo, toast, tg } from './ui.js';
 import { REFILL, createWallet } from './wallet.js';
 
@@ -28,7 +29,7 @@ function noChips() {
     setTimeout(refillSheet, 1600);
     return;
   }
-  toast('Не хватает фишек на такую ставку');
+  toast(t('Не хватает фишек на такую ставку', 'Not enough chips for that bet'));
 }
 
 function refillSheet() {
@@ -38,10 +39,10 @@ function refillSheet() {
   sheet.innerHTML = `
     <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
       <div class="sheet-coin" aria-hidden="true"></div>
-      <h2 id="sheet-title">Фишки закончились</h2>
-      <p>Фишки тут игровые и бесплатные — бери ещё и продолжай.</p>
-      <button type="button" class="btn-primary press" data-act="take">Взять ${fmt(REFILL)}</button>
-      <button type="button" class="btn-ghost press" data-act="close">Не сейчас</button>
+      <h2 id="sheet-title">${t('Фишки закончились', 'Out of chips')}</h2>
+      <p>${t('Фишки тут игровые и бесплатные — бери ещё и продолжай.', 'Chips here are free play money — grab more and keep going.')}</p>
+      <button type="button" class="btn-primary press" data-act="take">${t('Взять', 'Take')} ${fmt(REFILL)}</button>
+      <button type="button" class="btn-ghost press" data-act="close">${t('Не сейчас', 'Not now')}</button>
     </div>`;
   sheet.addEventListener('click', (e) => {
     const act = e.target.closest('[data-act]')?.dataset.act ?? (e.target === sheet ? 'close' : null);
@@ -61,34 +62,46 @@ function refillSheet() {
 
 const ctx = { wallet, noChips };
 
-const TILES = [
-  { id: 'slots', name: 'Слоты', sub: 'Три в ряд — до ×500', art: '<div class="art-reels"><span>7</span><span>7</span><span>7</span></div>' },
-  { id: 'blackjack', name: 'Блэкджек', sub: 'Набери 21, но не больше', art: '<div class="art-cards"><i>A<b>♠</b></i><i class="r">K<b>♥</b></i></div>' },
-  { id: 'roulette', name: 'Рулетка', sub: 'Красное или чёрное', art: '<div class="art-wheel"></div>' },
-  { id: 'poker', name: 'Покер', sub: 'Видеопокер, валеты и выше', art: '<div class="art-suits"><b>♠</b><b class="r">♥</b><b class="r">♦</b><b>♣</b></div>' },
-  { id: 'blocks', name: 'Блоки', sub: 'Как Block Blast: линии на рекорд', art: '<div class="art-blocks">' + 'c3,c3,,c6,c3,c3,c6,c6,c1,,c6,c4,c1,c1,c1,c4'.split(',').map((c) => `<i class="${c}"></i>`).join('') + '</div>' },
-  { id: 'chess', name: 'Шахматы', sub: 'С ботом, вдвоём или с другом онлайн', art: '<div class="art-chess"><span>♞\uFE0E</span></div>' },
+const TILES = () => [
+  { id: 'slots', name: t('Слоты', 'Slots'), sub: t('Три в ряд — до ×500', 'Three in a row — up to ×500'), art: '<div class="art-reels"><span>7</span><span>7</span><span>7</span></div>' },
+  { id: 'blackjack', name: t('Блэкджек', 'Blackjack'), sub: t('Набери 21, но не больше', 'Get to 21, not over'), art: '<div class="art-cards"><i>A<b>♠</b></i><i class="r">K<b>♥</b></i></div>' },
+  { id: 'roulette', name: t('Рулетка', 'Roulette'), sub: t('Красное или чёрное', 'Red or black'), art: '<div class="art-wheel"></div>' },
+  { id: 'poker', name: t('Покер', 'Poker'), sub: t('Видеопокер, валеты и выше', 'Video poker, Jacks or Better'), art: '<div class="art-suits"><b>♠</b><b class="r">♥</b><b class="r">♦</b><b>♣</b></div>' },
+  { id: 'blocks', name: t('Блоки', 'Blocks'), sub: t('Как Block Blast: линии на рекорд', 'Like Block Blast: clear lines, beat your best'), art: '<div class="art-blocks">' + 'c3,c3,,c6,c3,c3,c6,c6,c1,,c6,c4,c1,c1,c1,c4'.split(',').map((c) => `<i class="${c}"></i>`).join('') + '</div>' },
+  { id: 'chess', name: t('Шахматы', 'Chess'), sub: t('С ботом, вдвоём или с другом онлайн', 'Vs bot, pass-and-play or online with a friend'), art: '<div class="art-chess"><span>♞\uFE0E</span></div>' },
 ];
 
 function renderHome() {
   screen.innerHTML = `
     <section class="hero">
-      <h2>Убей время</h2>
-      <p>Шесть игр, чтобы скоротать время. Выбирай.</p>
+      <div class="lang-switch" role="radiogroup" aria-label="${t('Язык', 'Language')}">
+        <button type="button" class="press" role="radio" aria-checked="${lang === 'ru'}" data-lang="ru">RU</button>
+        <button type="button" class="press" role="radio" aria-checked="${lang === 'en'}" data-lang="en">EN</button>
+      </div>
+      <h2>${t('Убей время', 'Kill some time')}</h2>
+      <p>${t('Шесть игр, чтобы скоротать время. Выбирай.', 'Six games to pass the time. Pick one.')}</p>
     </section>
-    ${wallet.balance < MIN_BET ? `<button type="button" class="refill press" data-act="refill"><span class="coin"></span>Фишки закончились — взять ещё ${fmt(REFILL)}</button>` : ''}
+    ${wallet.balance < MIN_BET ? `<button type="button" class="refill press" data-act="refill"><span class="coin"></span>${t('Фишки закончились — взять ещё', 'Out of chips — take')} ${fmt(REFILL)}</button>` : ''}
     <div class="tiles">
-      ${TILES.map((t) => `
-        <button type="button" class="tile tile-${t.id} press" data-game="${t.id}">
-          <div class="tile-art" aria-hidden="true">${t.art}</div>
-          <div class="tile-caption"><b>${t.name}</b><span>${t.sub}</span></div>
+      ${TILES().map((g) => `
+        <button type="button" class="tile tile-${g.id} press" data-game="${g.id}">
+          <div class="tile-art" aria-hidden="true">${g.art}</div>
+          <div class="tile-caption"><b>${g.name}</b><span>${g.sub}</span></div>
         </button>`).join('')}
     </div>
-    <p class="note">Фишки ненастоящие: их нельзя купить, продать или вывести. Играем просто так.</p>`;
+    <p class="note">${t('Фишки ненастоящие: их нельзя купить, продать или вывести. Играем просто так.', 'Chips are not real: they can’t be bought, sold or cashed out. Just for fun.')}</p>`;
 }
 
 screen.addEventListener('click', (e) => {
   if (current !== 'home') return;
+  const langBtn = e.target.closest('[data-lang]');
+  if (langBtn) {
+    setLang(langBtn.dataset.lang);
+    applyStaticText();
+    haptic('select');
+    show('home');
+    return;
+  }
   const tile = e.target.closest('[data-game]');
   if (tile) {
     haptic('light');
@@ -109,7 +122,7 @@ function show(name, params = null) {
     titleEl.textContent = 'TimeSkip';
   } else {
     cleanup = GAMES[name].mount(screen, { ...ctx, params }) ?? null;
-    titleEl.textContent = GAMES[name].title;
+    titleEl.textContent = typeof GAMES[name].title === 'function' ? GAMES[name].title() : GAMES[name].title;
   }
   const home = name === 'home';
   backEl.hidden = home;
@@ -117,6 +130,13 @@ function show(name, params = null) {
   wallet.render();
   window.scrollTo(0, 0);
 }
+
+/** Тексты из index.html (подписи кнопок шапки). */
+function applyStaticText() {
+  backEl.setAttribute('aria-label', t('Назад', 'Back'));
+  document.getElementById('balance').setAttribute('aria-label', t('Фишки', 'Chips'));
+}
+applyStaticText();
 
 function goHome() {
   haptic('light');

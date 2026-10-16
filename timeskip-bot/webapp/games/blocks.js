@@ -4,8 +4,9 @@
 import { COMBO_WINDOW, PIECES, SIZE, canPlace, fitsAnywhere, fullLines, newGame, play } from '../lib/blocks.js';
 import { sfx, setSound, soundOn } from '../sound.js';
 import { fmt, haptic, jojo, tg } from '../ui.js';
+import { t } from '../i18n.js';
 
-export const title = 'Блоки';
+export const title = () => t('Блоки', 'Blocks');
 
 const STORE = 'timeskip.blocks';
 const CLOUD_BEST = 'blocks_best';
@@ -15,7 +16,10 @@ const cloud = tg?.isVersionAtLeast?.('6.9') ? tg.CloudStorage : null;
 const HEX = [null, '#ff4d4d', '#ff9a1f', '#ffd31a', '#3ddc5a', '#2ed3e6', '#3a7bff', '#b061ff'];
 
 // Похвала за число линий одним ходом.
-const PRAISE = { 2: 'Хорошо!', 3: 'Отлично!', 4: 'Супер!', 5: 'Потрясающе!', 6: 'Невероятно!' };
+const PRAISE = () => t(
+  { 2: 'Хорошо!', 3: 'Отлично!', 4: 'Супер!', 5: 'Потрясающе!', 6: 'Невероятно!' },
+  { 2: 'Good!', 3: 'Great!', 4: 'Excellent!', 5: 'Amazing!', 6: 'Unbelievable!' },
+);
 
 // --- Сохранение: партия переживает закрытие приложения ---
 
@@ -65,35 +69,35 @@ const icon = (on) => (on
 export function mount(root) {
   root.innerHTML = `
     <section class="bb-top">
-      <div class="bb-best" aria-label="Рекорд">${CROWN}<b id="best"></b></div>
+      <div class="bb-best" aria-label="${t('Рекорд', 'Best')}">${CROWN}<b id="best"></b></div>
       <div class="bb-center">
         <div class="bb-score" id="score" aria-live="polite"></div>
         <div class="combo off" id="combo"></div>
       </div>
       <div class="bb-actions">
         <button type="button" class="bb-btn press" id="sound"></button>
-        <button type="button" class="bb-btn press" id="restart" aria-label="Новая игра">
+        <button type="button" class="bb-btn press" id="restart" aria-label="${t('Новая игра', 'New game')}">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4v4h4"/></svg>
         </button>
       </div>
     </section>
     <section class="blocks-board-wrap" id="wrap">
-      <div class="blocks-board" id="board" role="grid" aria-label="Поле 8 на 8">
+      <div class="blocks-board" id="board" role="grid" aria-label="${t('Поле 8 на 8', '8 by 8 board')}">
         ${Array.from({ length: SIZE * SIZE }, () => '<div class="bcell"></div>').join('')}
       </div>
       <div class="bb-fx" id="fx" aria-hidden="true"></div>
       <div class="blocks-float" id="float" aria-live="polite"></div>
       <div class="blocks-over" id="over" hidden>
-        <p class="over-title">Нет места!</p>
+        <p class="over-title">${t('Нет места!', 'No space!')}</p>
         <div class="over-card">
-          <span>Счёт</span>
+          <span>${t('Счёт', 'Score')}</span>
           <b id="over-score"></b>
           <p id="over-best"></p>
-          <button type="button" class="btn-primary press" id="again">Ещё раз</button>
+          <button type="button" class="btn-primary press" id="again">${t('Ещё раз', 'Play again')}</button>
         </div>
       </div>
     </section>
-    <section class="blocks-tray" id="tray" aria-label="Фигуры"></section>`;
+    <section class="blocks-tray" id="tray" aria-label="${t('Фигуры', 'Pieces')}"></section>`;
 
   view = {
     board: root.querySelector('#board'),
@@ -111,7 +115,7 @@ export function mount(root) {
     sound: root.querySelector('#sound'),
   };
   root.querySelector('#restart').addEventListener('click', async () => {
-    if (st.moves && !st.over && !(await ask('Начать заново? Текущая партия пропадёт.'))) return;
+    if (st.moves && !st.over && !(await ask(t('Начать заново? Текущая партия пропадёт.', 'Start over? This game will be lost.')))) return;
     restart();
   });
   root.querySelector('#again').addEventListener('click', restart);
@@ -155,7 +159,7 @@ function renderAll() {
 function renderSound() {
   if (!view) return;
   view.sound.innerHTML = icon(soundOn());
-  view.sound.setAttribute('aria-label', soundOn() ? 'Выключить звук' : 'Включить звук');
+  view.sound.setAttribute('aria-label', soundOn() ? t('Выключить звук', 'Mute') : t('Включить звук', 'Unmute'));
 }
 
 function renderBest() {
@@ -197,7 +201,7 @@ function renderCombo(bump = false) {
   const left = COMBO_WINDOW - st.sinceClear;
   const dots = Array.from({ length: COMBO_WINDOW }, (_, i) => `<i class="${i < left ? '' : 'used'}"></i>`).join('');
   el.className = `combo hot${Math.min(st.combo, 4)}`;
-  el.innerHTML = `<span>Комбо <b>${st.combo}</b></span><span class="combo-left" aria-label="Ходов, чтобы продлить серию: ${left}">${dots}</span>`;
+  el.innerHTML = `<span>${t('Комбо', 'Combo')} <b>${st.combo}</b></span><span class="combo-left" aria-label="${t('Ходов, чтобы продлить серию', 'Moves left to keep the streak')}: ${left}">${dots}</span>`;
   if (bump) {
     void el.offsetWidth;
     el.classList.add('bump');
@@ -227,7 +231,7 @@ function renderTray() {
     if (!s) return '<div class="tray-slot empty"></div>';
     // Фигуры, которым сейчас нет места, — тусклые (как в Block Blast).
     const fits = fitsAnywhere(st.board, s.piece);
-    return `<div class="tray-slot${fits ? '' : ' nofit'}" data-i="${i}" aria-label="Фигура из ${s.piece.cells.length} клеток${fits ? '' : ', сейчас не влезает'}">${pieceHtml(s.piece, s.color)}</div>`;
+    return `<div class="tray-slot${fits ? '' : ' nofit'}" data-i="${i}" aria-label="${t('Фигура из', 'Piece of')} ${s.piece.cells.length} ${t('клеток', 'cells')}${fits ? '' : t(', сейчас не влезает', ', doesn’t fit now')}">${pieceHtml(s.piece, s.color)}</div>`;
   }).join('');
 }
 
@@ -237,7 +241,7 @@ function renderOver() {
   if (!st.over) return;
   const record = st.score > 0 && st.score >= best;
   view.overScore.textContent = fmt(st.score);
-  view.overBest.innerHTML = record ? `${CROWN} Новый рекорд!` : `${CROWN} Рекорд ${fmt(best)}`;
+  view.overBest.innerHTML = record ? `${CROWN} ${t('Новый рекорд!', 'New best!')}` : `${CROWN} ${t('Рекорд', 'Best')} ${fmt(best)}`;
   view.overBest.classList.toggle('record', record);
 }
 
@@ -460,9 +464,9 @@ function sparks(cells, color) {
 function floatText(last, lines) {
   if (!view) return;
   const parts = [];
-  const praise = last.cleared ? 'Чисто!' : PRAISE[Math.min(lines, 6)];
+  const praise = last.cleared ? t('Чисто!', 'Clear!') : PRAISE()[Math.min(lines, 6)];
   if (praise) parts.push(`<span class="praise">${praise}</span>`);
-  if (last.combo > 1) parts.push(`<span class="combo-word">Комбо ${last.combo}</span>`);
+  if (last.combo > 1) parts.push(`<span class="combo-word">${t('Комбо', 'Combo')} ${last.combo}</span>`);
   parts.push(`<span class="pts">+${fmt(last.points)}</span>`);
   view.float.innerHTML = parts.join('');
   view.float.classList.toggle('big', last.combo >= 3 || lines >= 3 || last.cleared);
@@ -474,7 +478,7 @@ function floatText(last, lines) {
 function toastCombo(was) {
   if (!view) return;
   view.combo.className = 'combo';
-  view.combo.innerHTML = `<span class="combo-hint">Комбо ${was} прервалось</span>`;
+  view.combo.innerHTML = `<span class="combo-hint">${t(`Комбо ${was} прервалось`, `Combo ${was} lost`)}</span>`;
   setTimeout(() => {
     if (view && st.combo < 2) view.combo.classList.add('off');
   }, 1400);

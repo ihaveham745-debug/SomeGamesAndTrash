@@ -1230,3 +1230,17 @@ body.jj-sepia .screen, body.jj-sepia .top { filter: sepia(.85) contrast(1.1) bri
 @media (prefers-reduced-motion: reduce) {
   .menacing span { animation: none; }
 }
+
+/* Переключатель языка RU / EN на главном экране */
+.hero { display: flex; flex-direction: column; }
+.lang-switch {
+  align-self: flex-end; margin-bottom: -4px;
+  display: flex; gap: 2px; padding: 3px;
+  background: var(--jj-ink); border: 2.5px solid var(--jj-ink); border-radius: 8px;
+  box-shadow: 3px 3px 0 var(--jj-pink);
+}
+.lang-switch button {
+  min-width: 42px; height: 32px; padding: 0 8px; border-radius: 5px;
+  font: 400 15px/1 var(--jj-display, system-ui); color: #fff;
+}
+.lang-switch button[aria-checked="true"] { background: var(--jj-yellow, #fff); color: var(--jj-ink, #000); transform: skewX(-8deg); }

@@ -3,8 +3,9 @@
 import { randInt } from '../lib/random.js';
 import { OUTSIDE, WHEEL, colorOf, totalPayout } from '../lib/roulette.js';
 import { chipPicker, fmt, haptic, jojo, short, toast } from '../ui.js';
+import { t } from '../i18n.js';
 
-export const title = 'Рулетка';
+export const title = () => t('Рулетка', 'Roulette');
 
 const STEP = 360 / 37;
 const SPIN_MS = 4800;
@@ -67,23 +68,23 @@ export function mount(root, ctx) {
         ${wheelSvg()}
         <div class="pointer" aria-hidden="true"></div>
       </div>
-      <div class="history" id="history" aria-label="Последние числа"></div>
+      <div class="history" id="history" aria-label="${t('Последние числа', 'Last numbers')}"></div>
     </section>
     <p class="table-msg" id="msg" aria-live="polite"></p>
     <section class="board" id="board">
       ${cell('n0', 0, 'green zero')}
       <div class="numbers">${numbers.join('')}</div>
-      <div class="outside dozens">${['dozen1', 'dozen2', 'dozen3'].map((s) => cell(s, OUTSIDE[s].label)).join('')}</div>
+      <div class="outside dozens">${['dozen1', 'dozen2', 'dozen3'].map((s) => cell(s, t(OUTSIDE[s].label, OUTSIDE[s].en ?? OUTSIDE[s].label))).join('')}</div>
       <div class="outside evens">
-        ${cell('low', '1–18')}${cell('even', 'Чёт')}${cell('red', '<i class="dot red"></i>', 'pick-red')}${cell('black', '<i class="dot black"></i>', 'pick-black')}${cell('odd', 'Нечет')}${cell('high', '19–36')}
+        ${cell('low', '1–18')}${cell('even', t('Чёт', 'Even'))}${cell('red', '<i class="dot red"></i>', 'pick-red')}${cell('black', '<i class="dot black"></i>', 'pick-black')}${cell('odd', t('Нечет', 'Odd'))}${cell('high', '19–36')}
       </div>
     </section>
     <div class="dock">
-      <div class="bet-row"><span>Фишка</span><div id="chips"></div></div>
+      <div class="bet-row"><span>${t('Фишка', 'Chip')}</span><div id="chips"></div></div>
       <div class="controls actions">
-        <button type="button" class="btn-glass press" data-act="undo">Отменить</button>
-        <button type="button" class="btn-glass press" data-act="clear">Сбросить</button>
-        <button type="button" class="btn-primary press" data-act="spin">Крутить</button>
+        <button type="button" class="btn-glass press" data-act="undo">${t('Отменить', 'Undo')}</button>
+        <button type="button" class="btn-glass press" data-act="clear">${t('Сбросить', 'Clear')}</button>
+        <button type="button" class="btn-primary press" data-act="spin">${t('Крутить', 'Spin')}</button>
       </div>
     </div>`;
 
@@ -142,10 +143,10 @@ function render(message, tone = '') {
   undoBtn.disabled = spinning || !placed.length;
   clearBtn.disabled = spinning || !placed.length;
   if (!spinning && !placed.length && lastBets) {
-    spinBtn.textContent = 'Повторить ставку';
+    spinBtn.textContent = t('Повторить ставку', 'Repeat bet');
     spinBtn.dataset.act = 'spin';
   } else {
-    spinBtn.textContent = total ? `Крутить · ${fmt(total)}` : 'Крутить';
+    spinBtn.textContent = total ? `${t('Крутить', 'Spin')} · ${fmt(total)}` : t('Крутить', 'Spin');
   }
   spinBtn.disabled = spinning;
   view.picker.disable(spinning);
@@ -153,7 +154,7 @@ function render(message, tone = '') {
   if (message !== undefined) {
     view.msg.innerHTML = message;
     view.msg.className = `table-msg ${tone}`;
-  } else if (!spinning && !view.msg.innerHTML) view.msg.textContent = 'Нажимай на числа и поля, чтобы поставить';
+  } else if (!spinning && !view.msg.innerHTML) view.msg.textContent = t('Нажимай на числа и поля, чтобы поставить', 'Tap numbers and fields to bet');
 }
 
 function place(spot) {
@@ -208,7 +209,7 @@ async function spin() {
   if (spinning) return;
   if (!placed.length) {
     if (!lastBets) {
-      toast('Сначала поставь: нажми на число или поле');
+      toast(t('Сначала поставь: нажми на число или поле', 'Bet first: tap a number or a field'));
       return;
     }
     if (!rebet()) return;
@@ -223,7 +224,7 @@ async function spin() {
   placed = [];
 
   const v = view;
-  render('Ставки сделаны, ставок больше нет…');
+  render(t('Ставки сделаны, ставок больше нет…', 'No more bets…'));
   if (v) for (const c of v.board.querySelectorAll('.cell.win')) c.classList.remove('win');
   // Выпавший карман должен прийти под стрелку сверху; плюс случайный сдвиг внутри кармана.
   const k = WHEEL.indexOf(result);
@@ -244,11 +245,11 @@ async function spin() {
 
   spinning = false;
   history = [result, ...history].slice(0, 12);
-  const color = { red: 'красное', black: 'чёрное', green: 'зеро' }[colorOf(result)];
+  const color = { red: t('красное', 'red'), black: t('чёрное', 'black'), green: t('зеро', 'zero') }[colorOf(result)];
   const profit = payout - staked;
   const text = payout
-    ? `<span class="num ${colorOf(result)}">${result}</span> ${color} · ${profit > 0 ? `<b>+${fmt(profit)}</b>` : profit === 0 ? 'в ноль' : `вернулось ${fmt(payout)}`}`
-    : `<span class="num ${colorOf(result)}">${result}</span> ${color} · мимо`;
+    ? `<span class="num ${colorOf(result)}">${result}</span> ${color} · ${profit > 0 ? `<b>+${fmt(profit)}</b>` : profit === 0 ? t('в ноль', 'break even') : `${t('вернулось', 'returned')} ${fmt(payout)}`}`
+    : `<span class="num ${colorOf(result)}">${result}</span> ${color} · ${t('мимо', 'no win')}`;
   haptic(profit > 0 ? 'success' : payout ? 'warning' : 'error');
   if (profit > 0) jojo(profit >= staked * 5 ? 'big' : 'win');
   ctxRef.wallet.render({ bump: profit > 0 });

@@ -3,19 +3,22 @@
 import { newDeck } from '../lib/cards.js';
 import { PAYTABLE, evaluate } from '../lib/poker.js';
 import { cardEl, chipPicker, fmt, haptic, jojo, setFace, sleep } from '../ui.js';
+import { t } from '../i18n.js';
 
-export const title = 'Покер';
+export const title = () => t('Покер', 'Poker');
+const nameOf = (p) => t(p.name, p.en);
 
 let bet = 10;
 let deck = newDeck();
 // phase: 'bet' — до раздачи, 'hold' — выбираем карты, 'done' — итог
-let st = { phase: 'bet', hand: deck.slice(0, 5), held: [false, false, false, false, false], bet: 0, win: null, message: 'Раздай карты и оставь лучшие' };
+let st = { phase: 'bet', hand: deck.slice(0, 5), held: [false, false, false, false, false], bet: 0, win: null, message: t('Раздай карты и оставь лучшие', 'Deal and keep your best cards') };
 let view = null;
 let ctxRef = null;
 let busy = false;
 
 export function mount(root, ctx) {
   ctxRef = ctx;
+  if (st.phase === 'bet') st.message = t('Раздай карты и оставь лучшие', 'Deal and keep your best cards');
   root.innerHTML = `
     <section class="paytable-board" id="pays"></section>
     <section class="felt felt-poker">
@@ -29,7 +32,7 @@ export function mount(root, ctx) {
     msg: root.querySelector('#msg'),
     controls: root.querySelector('#controls'),
   };
-  view.hand.innerHTML = st.hand.map((_, i) => `<button type="button" class="slot press" data-i="${i}"><span class="held-tag">Держу</span></button>`).join('');
+  view.hand.innerHTML = st.hand.map((_, i) => `<button type="button" class="slot press" data-i="${i}"><span class="held-tag">${t('Держу', 'Held')}</span></button>`).join('');
   st.hand.forEach((c, i) => view.hand.children[i].prepend(cardEl(c, { down: st.phase === 'bet' })));
   view.hand.addEventListener('click', onCard);
   view.controls.addEventListener('click', onControl);
@@ -44,7 +47,7 @@ function render() {
   const shownBet = st.phase === 'bet' ? bet : st.bet;
   const current = st.phase === 'done' ? st.win : st.phase === 'hold' ? evaluate(st.hand) : null;
   view.pays.innerHTML = PAYTABLE.map((p) => `
-    <div class="pay-row${current?.key === p.key ? ' hit' : ''}"><span>${p.name}</span><b>${fmt(p.mult * shownBet)}</b></div>`).join('');
+    <div class="pay-row${current?.key === p.key ? ' hit' : ''}"><span>${nameOf(p)}</span><b>${fmt(p.mult * shownBet)}</b></div>`).join('');
   [...view.hand.children].forEach((slot, i) => {
     slot.classList.toggle('held', st.held[i]);
     slot.disabled = st.phase !== 'hold';
@@ -55,10 +58,10 @@ function render() {
   const c = view.controls;
   if (st.phase === 'hold') {
     c.className = 'controls';
-    c.innerHTML = '<button type="button" class="btn-primary press" data-act="draw">Заменить</button>';
+    c.innerHTML = `<button type="button" class="btn-primary press" data-act="draw">${t('Заменить', 'Draw')}</button>`;
   } else {
     c.className = 'controls';
-    c.innerHTML = `<div class="bet-row"><span>Ставка</span><div id="chips"></div></div><button type="button" class="btn-primary press" data-act="deal">${st.phase === 'done' ? 'Раздать снова' : 'Раздать'}</button>`;
+    c.innerHTML = `<div class="bet-row"><span>${t('Ставка', 'Bet')}</span><div id="chips"></div></div><button type="button" class="btn-primary press" data-act="deal">${st.phase === 'done' ? t('Раздать снова', 'Deal again') : t('Раздать', 'Deal')}</button>`;
     const picker = chipPicker({ get: () => bet, set: (v) => { bet = v; render(); }, wallet: ctxRef.wallet });
     c.querySelector('#chips').replaceWith(picker.el);
   }
@@ -107,7 +110,7 @@ async function deal() {
   render();
   await flip([0, 1, 2, 3, 4]);
   const now = evaluate(st.hand);
-  st.message = now ? `Уже есть: <b>${now.name}</b>. Отметь карты, которые оставить` : 'Нажми на карты, которые оставить';
+  st.message = now ? t(`Уже есть: <b>${nameOf(now)}</b>. Отметь карты, которые оставить`, `You have <b>${nameOf(now)}</b>. Tap the cards to keep`) : t('Нажми на карты, которые оставить', 'Tap the cards you want to keep');
   render();
 }
 
@@ -118,11 +121,11 @@ async function drawCards() {
   st.win = evaluate(st.hand);
   const payout = st.win ? st.win.mult * st.bet : 0;
   ctxRef.wallet.give(payout);
-  st.message = 'Меняем…';
+  st.message = t('Меняем…', 'Drawing…');
   render();
   await flip(idx);
-  st.message = st.win ? `${st.win.name}! <b>+${fmt(payout - st.bet)}</b>` : 'Ничего не собралось';
-  if (st.win?.mult === 1) st.message = `${st.win.name} — ставка вернулась`;
+  st.message = st.win ? `${nameOf(st.win)}! <b>+${fmt(payout - st.bet)}</b>` : t('Ничего не собралось', 'Nothing this time');
+  if (st.win?.mult === 1) st.message = t(`${nameOf(st.win)} — ставка вернулась`, `${nameOf(st.win)} — bet returned`);
   haptic(payout > st.bet ? 'success' : payout ? 'warning' : 'error');
   if (payout > st.bet) jojo(st.win.mult >= 9 ? 'big' : 'win');
   ctxRef.wallet.render({ bump: payout > st.bet });

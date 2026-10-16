@@ -4,15 +4,15 @@ import { rankValue } from './cards.js';
 
 // mult — сколько вернуть за 1 фишку ставки (вместе со ставкой).
 export const PAYTABLE = [
-  { key: 'royal', name: 'Роял-флеш', mult: 800 },
-  { key: 'straightFlush', name: 'Стрит-флеш', mult: 50 },
-  { key: 'four', name: 'Каре', mult: 25 },
-  { key: 'fullHouse', name: 'Фулл-хаус', mult: 9 },
-  { key: 'flush', name: 'Флеш', mult: 6 },
-  { key: 'straight', name: 'Стрит', mult: 4 },
-  { key: 'three', name: 'Тройка', mult: 3 },
-  { key: 'twoPair', name: 'Две пары', mult: 2 },
-  { key: 'jacks', name: 'Пара от валетов', mult: 1 },
+  { key: 'royal', name: 'Роял-флеш', en: 'Royal Flush', mult: 800 },
+  { key: 'straightFlush', name: 'Стрит-флеш', en: 'Straight Flush', mult: 50 },
+  { key: 'four', name: 'Каре', en: 'Four of a Kind', mult: 25 },
+  { key: 'fullHouse', name: 'Фулл-хаус', en: 'Full House', mult: 9 },
+  { key: 'flush', name: 'Флеш', en: 'Flush', mult: 6 },
+  { key: 'straight', name: 'Стрит', en: 'Straight', mult: 4 },
+  { key: 'three', name: 'Тройка', en: 'Three of a Kind', mult: 3 },
+  { key: 'twoPair', name: 'Две пары', en: 'Two Pair', mult: 2 },
+  { key: 'jacks', name: 'Пара от валетов', en: 'Jacks or Better', mult: 1 },
 ];
 
 const BY_KEY = Object.fromEntries(PAYTABLE.map((p) => [p.key, p]));

@@ -12,10 +12,10 @@ export function colorOf(n) {
 
 // Внешние ставки: какие числа выигрывают и во сколько раз возвращается ставка.
 export const OUTSIDE = {
-  red: { label: 'Красное', wins: (n) => colorOf(n) === 'red', mult: 2 },
-  black: { label: 'Чёрное', wins: (n) => colorOf(n) === 'black', mult: 2 },
-  even: { label: 'Чёт', wins: (n) => n !== 0 && n % 2 === 0, mult: 2 },
-  odd: { label: 'Нечет', wins: (n) => n % 2 === 1, mult: 2 },
+  red: { label: 'Красное', en: 'Red', wins: (n) => colorOf(n) === 'red', mult: 2 },
+  black: { label: 'Чёрное', en: 'Black', wins: (n) => colorOf(n) === 'black', mult: 2 },
+  even: { label: 'Чёт', en: 'Even', wins: (n) => n !== 0 && n % 2 === 0, mult: 2 },
+  odd: { label: 'Нечет', en: 'Odd', wins: (n) => n % 2 === 1, mult: 2 },
   low: { label: '1–18', wins: (n) => n >= 1 && n <= 18, mult: 2 },
   high: { label: '19–36', wins: (n) => n >= 19, mult: 2 },
   dozen1: { label: '1–12', wins: (n) => n >= 1 && n <= 12, mult: 3 },

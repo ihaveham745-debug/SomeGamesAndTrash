@@ -3,8 +3,9 @@
 import { randInt } from '../lib/random.js';
 import { SYMBOLS, TWO_CHERRIES, multiplier, spin } from '../lib/slots.js';
 import { chipPicker, fmt, haptic, jojo } from '../ui.js';
+import { t } from '../i18n.js';
 
-export const title = 'Слоты';
+export const title = () => t('Слоты', 'Slots');
 
 const randomSymbol = () => SYMBOLS[randInt(SYMBOLS.length)].s;
 
@@ -17,20 +18,20 @@ let view = null;
 export function mount(root, { wallet, noChips }) {
   root.innerHTML = `
     <section class="machine">
-      <div class="marquee"><span>★</span> Три в ряд <span>★</span></div>
+      <div class="marquee"><span>★</span> ${t('Три в ряд', 'Three in a row')} <span>★</span></div>
       <div class="reels">
         ${[0, 1, 2].map(() => '<div class="reel"><div class="strip"></div></div>').join('')}
         <div class="payline" aria-hidden="true"></div>
       </div>
-      <p class="slot-msg" id="msg" aria-live="polite">Собери три одинаковых на линии</p>
+      <p class="slot-msg" id="msg" aria-live="polite">${t('Собери три одинаковых на линии', 'Line up three of a kind')}</p>
     </section>
-    <div class="bet-row"><span>Ставка</span><div id="chips"></div></div>
-    <button type="button" class="btn-primary press" id="spin">Крутить</button>
+    <div class="bet-row"><span>${t('Ставка', 'Bet')}</span><div id="chips"></div></div>
+    <button type="button" class="btn-primary press" id="spin">${t('Крутить', 'Spin')}</button>
     <details class="paytable">
-      <summary>Выплаты</summary>
+      <summary>${t('Выплаты', 'Payouts')}</summary>
       <div class="pay-grid">
         ${[...SYMBOLS].reverse().map((x) => `<span>${x.s}${x.s}${x.s}</span><b>×${x.three}</b>`).join('')}
-        <span>🍒🍒 где угодно</span><b>×${TWO_CHERRIES}</b>
+        <span>🍒🍒 ${t('где угодно', 'anywhere')}</span><b>×${TWO_CHERRIES}</b>
       </div>
     </details>`;
 
@@ -83,7 +84,7 @@ async function play(wallet, noChips) {
   const v = view;
   v.btn.disabled = true;
   v.picker.disable(true);
-  v.msg.textContent = 'Крутим…';
+  v.msg.textContent = t('Крутим…', 'Spinning…');
   v.msg.className = 'slot-msg';
   for (const r of v.reels) r.classList.remove('win');
   haptic('medium');
@@ -101,12 +102,12 @@ async function play(wallet, noChips) {
   v.picker.update();
   wallet.render({ bump: win > 0 });
   if (win > 0) {
-    v.msg.innerHTML = `${win >= bet * 20 ? 'Джекпот! ' : 'Выигрыш '}<b>+${fmt(win)}</b>`;
+    v.msg.innerHTML = `${win >= bet * 20 ? t('Джекпот! ', 'Jackpot! ') : t('Выигрыш ', 'Win ')}<b>+${fmt(win)}</b>`;
     v.msg.className = `slot-msg won${win >= bet * 20 ? ' big' : ''}`;
     v.reels.forEach((r, i) => r.classList.toggle('win', result[0] === result[2] || result[i] === '🍒'));
     haptic('success');
     jojo(win >= bet * 20 ? 'big' : 'win');
   } else {
-    v.msg.textContent = 'Мимо. Ещё разок?';
+    v.msg.textContent = t('Мимо. Ещё разок?', 'No luck. One more?');
   }
 }

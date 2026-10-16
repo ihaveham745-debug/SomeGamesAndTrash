@@ -6,18 +6,35 @@ import {
   colorOf, findMove, fromFen, inCheck, legalMoves, outcome, play, san, squareName, toUci,
 } from '../lib/chess.js';
 import { bestMove } from '../lib/chessai.js';
+import { lang, t } from '../i18n.js';
 import { haptic, jojo, sleep, tg, toast } from '../ui.js';
 
-export const title = 'Шахматы';
+export const title = () => t('Шахматы', 'Chess');
 
 const BOT_USERNAME = 'fish_and_chips_bloody_hell_Bot';
 const STORE = 'timeskip.chess';
 const GLYPH = { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' };
-const LEVEL_NAMES = { easy: 'Лёгкий', medium: 'Средний', hard: 'Сильный' };
-const REASONS = {
+const LEVEL_NAMES = () => t({ easy: 'Лёгкий', medium: 'Средний', hard: 'Сильный' }, { easy: 'Easy', medium: 'Medium', hard: 'Hard' });
+const REASONS_RU = {
   mate: 'мат', stalemate: 'пат', fifty: 'правило 50 ходов', repetition: 'троекратное повторение',
   material: 'мало фигур для мата', resign: 'сдача', cancelled: 'приглашение отменено',
 };
+const REASONS_EN = {
+  mate: 'checkmate', stalemate: 'stalemate', fifty: '50-move rule', repetition: 'threefold repetition',
+  material: 'insufficient material', resign: 'resignation', cancelled: 'invite cancelled',
+};
+const reasonText = (r) => t(REASONS_RU, REASONS_EN)[r] ?? r ?? '';
+
+// Ошибки сервера приходят по-русски — в английском режиме переводим по коду.
+const SERVER_ERRORS_EN = {
+  NO_USER: 'Open the game from Telegram', NOT_FOUND: 'Game not found', NOT_PLAYER: 'You are not playing in this game',
+  NOT_ACTIVE: 'The game is not in progress', STALE: 'The position has changed', NOT_YOUR_TURN: 'It’s your opponent’s turn',
+  ILLEGAL: 'Illegal move',
+};
+function errText(err, fallbackRu, fallbackEn) {
+  if (lang === 'en') return SERVER_ERRORS_EN[err?.parameters?.code] ?? (err?.type === 'ENDPOINT_ERROR' ? err.message : null) ?? fallbackEn;
+  return err?.message || fallbackRu;
+}
 
 // --- Состояние ---
 // game: { mode: 'bot' | 'local' | 'online', moves: ['e2e4', …], states: [позиция до каждого хода + текущая],
@@ -94,7 +111,7 @@ const current = () => game.states.at(-1);
 function callBot(name, input = {}) {
   return new Promise((resolve, reject) => {
     if (!tg?.Serverless?.call) {
-      reject(new Error('Игра с другом работает только внутри Телеграма'));
+      reject(new Error(t('Игра с другом работает только внутри Телеграма', 'Playing with a friend only works inside Telegram')));
       return;
     }
     tg.Serverless.call(name, input, (err, result) => (err ? reject(err) : resolve(result)));
@@ -134,31 +151,31 @@ function renderMenu() {
     </div>`;
   view.root.innerHTML = `
     <section class="hero chess-hero">
-      <h2>Шахматы</h2>
-      <p>С ботом, вдвоём на одном телефоне или с другом онлайн.</p>
+      <h2>${t('Шахматы', 'Chess')}</h2>
+      <p>${t('С ботом, вдвоём на одном телефоне или с другом онлайн.', 'Against the bot, two players on one phone, or online with a friend.')}</p>
     </section>
     ${saved.map(({ m, g }) => `
       <button type="button" class="chess-resume press" data-resume="${m}">
         <span class="chess-resume-icon">♞</span>
-        <span><b>Продолжить: ${m === 'bot' ? `против бота (${LEVEL_NAMES[g.level] ?? ''})` : 'вдвоём'}</b><small>${Math.ceil(g.moves.length / 2)}-й ход</small></span>
+        <span><b>${t('Продолжить', 'Resume')}: ${m === 'bot' ? `${t('против бота', 'vs bot')} (${LEVEL_NAMES()[g.level] ?? ''})` : t('вдвоём', 'two players')}</b><small>${t(`${Math.ceil(g.moves.length / 2)}-й ход`, `move ${Math.ceil(g.moves.length / 2)}`)}</small></span>
       </button>`).join('')}
     <section class="chess-card">
-      <h3><span>🤖</span> Против бота</h3>
-      <label>Сложность</label>
-      ${seg('level', [['easy', 'Лёгкий'], ['medium', 'Средний'], ['hard', 'Сильный']], menuPrefs.level)}
-      <label>Играю за</label>
-      ${seg('color', [['w', 'Белых'], ['random', 'Случайно'], ['b', 'Чёрных']], menuPrefs.color)}
-      <button type="button" class="btn-primary press" data-start="bot">Играть</button>
+      <h3><span>🤖</span> ${t('Против бота', 'Vs bot')}</h3>
+      <label>${t('Сложность', 'Difficulty')}</label>
+      ${seg('level', Object.entries(LEVEL_NAMES()), menuPrefs.level)}
+      <label>${t('Играю за', 'Play as')}</label>
+      ${seg('color', [['w', t('Белых', 'White')], ['random', t('Случайно', 'Random')], ['b', t('Чёрных', 'Black')]], menuPrefs.color)}
+      <button type="button" class="btn-primary press" data-start="bot">${t('Играть', 'Play')}</button>
     </section>
     <section class="chess-card">
-      <h3><span>👥</span> Вдвоём на одном телефоне</h3>
-      <p>Ходите по очереди и передаёте телефон. Доска поворачивается к тому, чей ход.</p>
-      <button type="button" class="btn-glass press" data-start="local">Начать</button>
+      <h3><span>👥</span> ${t('Вдвоём на одном телефоне', 'Two players, one phone')}</h3>
+      <p>${t('Ходите по очереди и передаёте телефон. Доска поворачивается к тому, чей ход.', 'Take turns and pass the phone. The board turns to whoever moves next.')}</p>
+      <button type="button" class="btn-glass press" data-start="local">${t('Начать', 'Start')}</button>
     </section>
     <section class="chess-card">
-      <h3><span>🌐</span> С другом онлайн</h3>
-      <p>Отправь другу приглашение — каждый играет со своего телефона. Когда друг сходит, бот напишет тебе.</p>
-      <button type="button" class="btn-glass press" data-start="online">Пригласить друга</button>
+      <h3><span>🌐</span> ${t('С другом онлайн', 'Online with a friend')}</h3>
+      <p>${t('Отправь другу приглашение — каждый играет со своего телефона. Когда друг сходит, бот напишет тебе.', 'Send a friend an invite — each of you plays on your own phone. The bot messages you when it’s your move.')}</p>
+      <button type="button" class="btn-glass press" data-start="online">${t('Пригласить друга', 'Invite a friend')}</button>
       <div class="chess-list" id="chess-list"></div>
     </section>`;
 
@@ -203,13 +220,13 @@ async function loadOnlineList() {
     const { games } = await callBot('chessList');
     const list = view?.root.querySelector('#chess-list');
     if (!list || !games.length) return;
-    list.innerHTML = `<h4>Мои партии</h4>${games.slice(0, 8).map((g) => {
+    list.innerHTML = `<h4>${t('Мои партии', 'My games')}</h4>${games.slice(0, 8).map((g) => {
       const opp = g.you === 'w' ? g.black?.name : g.white?.name;
       let status;
-      if (g.status === 'waiting') status = 'ждём соперника';
-      else if (g.status === 'over') status = g.result ? resultText(g.result, g.reason, g.you) : 'отменена';
-      else status = (g.moves.length % 2 === 0 ? 'w' : 'b') === g.you ? '<b class="your-turn">твой ход</b>' : 'ход соперника';
-      return `<button type="button" class="chess-row press" data-open="${g.code}"><span>${g.you === 'w' ? '♔' : '♚'} ${escapeHtml(opp ?? 'без соперника')}</span><small>${status}</small></button>`;
+      if (g.status === 'waiting') status = t('ждём соперника', 'waiting for opponent');
+      else if (g.status === 'over') status = g.result ? resultText(g.result, g.reason, g.you) : t('отменена', 'cancelled');
+      else status = (g.moves.length % 2 === 0 ? 'w' : 'b') === g.you ? `<b class="your-turn">${t('твой ход', 'your move')}</b>` : t('ход соперника', 'opponent’s move');
+      return `<button type="button" class="chess-row press" data-open="${g.code}"><span>${g.you === 'w' ? '♔' : '♚'} ${escapeHtml(opp ?? t('без соперника', 'no opponent'))}</span><small>${status}</small></button>`;
     }).join('')}`;
   } catch {
     // список — не главное
@@ -229,19 +246,19 @@ async function createOnline() {
     enterGame();
     invite();
   } catch (err) {
-    toast(err.message || 'Не получилось создать партию');
+    toast(errText(err, 'Не получилось создать партию', 'Couldn’t create the game'));
   }
 }
 
 async function openOnline(code) {
-  if (view) view.root.innerHTML = '<p class="chess-loading">Открываем партию…</p>';
+  if (view) view.root.innerHTML = `<p class="chess-loading">${t('Открываем партию…', 'Opening the game…')}</p>`;
   try {
     const online = await callBot('chessJoin', { code });
     game = startGame('online', { moves: online.moves, me: online.you ?? 'w', code, online });
     enterGame();
-    if (online.status === 'active' && online.you && online.moves.length === 0) toast('Партия началась!');
+    if (online.status === 'active' && online.you && online.moves.length === 0) toast(t('Партия началась!', 'The game has started!'));
   } catch (err) {
-    toast(err.message || 'Партия не найдена');
+    toast(errText(err, 'Партия не найдена', 'Game not found'));
     renderMenu();
   }
 }
@@ -251,7 +268,7 @@ function inviteLink() {
 }
 
 function invite() {
-  const url = `https://t.me/share/url?url=${encodeURIComponent(inviteLink())}&text=${encodeURIComponent('Сыграем в шахматы? ♟ Жми на ссылку')}`;
+  const url = `https://t.me/share/url?url=${encodeURIComponent(inviteLink())}&text=${encodeURIComponent(t('Сыграем в шахматы? ♟ Жми на ссылку', 'Fancy a game of chess? ♟ Tap the link'))}`;
   if (tg?.openTelegramLink) tg.openTelegramLink(url);
   else window.open(url, '_blank');
 }
@@ -294,7 +311,7 @@ function applyOnline(online) {
   if (!fresh.length && wasStatus !== online.status) {
     if (online.status === 'active' && wasStatus === 'waiting') {
       haptic('success');
-      toast('Соперник пришёл — играем!');
+      toast(t('Соперник пришёл — играем!', 'Your opponent is here — let’s play!'));
     }
     renderGame();
   } else if (fresh.length) {
@@ -322,19 +339,19 @@ function gameOutcome() {
 }
 
 function resultText(result, reason, me) {
-  if (!result) return 'отменена';
-  if (result === '1/2-1/2') return `ничья — ${REASONS[reason] ?? reason}`;
+  if (!result) return t('отменена', 'cancelled');
+  if (result === '1/2-1/2') return `${t('ничья', 'draw')} — ${reasonText(reason)}`;
   const winner = result === '1-0' ? 'w' : 'b';
-  if (me) return winner === me ? `победа — ${REASONS[reason] ?? reason}` : `поражение — ${REASONS[reason] ?? reason}`;
-  return `${winner === 'w' ? 'белые' : 'чёрные'} победили — ${REASONS[reason] ?? reason}`;
+  if (me) return `${winner === me ? t('победа', 'win') : t('поражение', 'loss')} — ${reasonText(reason)}`;
+  return `${winner === 'w' ? t('белые победили', 'white won') : t('чёрные победили', 'black won')} — ${reasonText(reason)}`;
 }
 
 function playerLabel(color) {
-  if (game.mode === 'bot') return color === game.me ? 'Ты' : `Бот · ${LEVEL_NAMES[game.level]}`;
-  if (game.mode === 'local') return color === 'w' ? 'Белые' : 'Чёрные';
+  if (game.mode === 'bot') return color === game.me ? t('Ты', 'You') : `${t('Бот', 'Bot')} · ${LEVEL_NAMES()[game.level]}`;
+  if (game.mode === 'local') return color === 'w' ? t('Белые', 'White') : t('Чёрные', 'Black');
   const p = color === 'w' ? game.online.white : game.online.black;
-  if (!p) return 'Ждём соперника…';
-  return color === game.online.you ? 'Ты' : p.name;
+  if (!p) return t('Ждём соперника…', 'Waiting for opponent…');
+  return color === game.online.you ? t('Ты', 'You') : p.name;
 }
 
 /** Взятые фигуры и перевес по материалу. */
@@ -356,16 +373,16 @@ function renderGame() {
   view.root.innerHTML = `
     ${game.mode === 'online' && game.online.status === 'waiting' ? `
       <section class="chess-invite">
-        <b>Ждём соперника</b>
-        <p>Отправь другу приглашение — партия начнётся, как только он откроет ссылку.</p>
+        <b>${t('Ждём соперника', 'Waiting for an opponent')}</b>
+        <p>${t('Отправь другу приглашение — партия начнётся, как только он откроет ссылку.', 'Send a friend the invite — the game starts as soon as they open the link.')}</p>
         <div class="chess-invite-actions">
-          <button type="button" class="btn-primary press" data-act="invite">Пригласить</button>
-          <button type="button" class="btn-glass press" data-act="copy">Ссылка</button>
+          <button type="button" class="btn-primary press" data-act="invite">${t('Пригласить', 'Invite')}</button>
+          <button type="button" class="btn-glass press" data-act="copy">${t('Ссылка', 'Link')}</button>
         </div>
       </section>` : ''}
     <div class="chess-player" id="p-top"></div>
     <section class="chess-board-wrap">
-      <div class="chess-board${flipped ? ' flipped' : ''}" id="board" role="grid" aria-label="Шахматная доска">
+      <div class="chess-board${flipped ? ' flipped' : ''}" id="board" role="grid" aria-label="${t('Шахматная доска', 'Chessboard')}">
         <div class="chess-squares" id="squares">${Array.from({ length: 64 }, (_, i) => `<div class="sq ${((i >> 3) + (i & 7)) % 2 ? 'dark' : 'light'}" data-sq="${i}"></div>`).join('')}</div>
         <div class="chess-pieces" id="pieces"></div>
       </div>
@@ -374,7 +391,7 @@ function renderGame() {
     </section>
     <div class="chess-player" id="p-bottom"></div>
     <p class="chess-status" id="status" aria-live="polite"></p>
-    <div class="chess-moves" id="moves" aria-label="Ходы партии"></div>
+    <div class="chess-moves" id="moves" aria-label="${t('Ходы партии', 'Moves')}"></div>
     <div class="chess-actions" id="actions"></div>`;
 
   view.board = view.root.querySelector('#board');
@@ -412,7 +429,7 @@ function onInviteClick(e) {
   if (act === 'invite') invite();
   if (act === 'copy') {
     const link = inviteLink();
-    navigator.clipboard?.writeText(link).then(() => toast('Ссылка скопирована'), () => toast(link));
+    navigator.clipboard?.writeText(link).then(() => toast(t('Ссылка скопирована', 'Link copied')), () => toast(link));
   }
 }
 
@@ -467,48 +484,48 @@ function refresh() {
   const playerHtml = (color) => {
     const turn = !end.over && state.turn === color && !(game.mode === 'online' && game.online.status === 'waiting');
     const adv = color === 'w' ? cap.diff : -cap.diff;
-    const taken = cap[color].map((t) => `${GLYPH[t]}︎`).join('');
+    const taken = cap[color].map((p) => `${GLYPH[p]}︎`).join('');
     return `<span class="chess-avatar ${color === 'w' ? 'white' : 'black'}">${GLYPH.K}︎</span>
       <span class="chess-name">${escapeHtml(playerLabel(color))}</span>
       <span class="chess-taken ${color === 'w' ? 'of-black' : 'of-white'}">${taken}${adv > 0 ? `<b>+${adv}</b>` : ''}</span>
-      ${turn ? '<span class="chess-turn" aria-label="ходит"></span>' : ''}`;
+      ${turn ? `<span class="chess-turn" aria-label="${t('ходит', 'to move')}"></span>` : ''}`;
   };
   view.top.innerHTML = playerHtml(view.topColor);
   view.bottom.innerHTML = playerHtml(view.bottomColor);
 
   view.status.className = 'chess-status';
   if (end.over) {
-    view.status.textContent = `Партия окончена: ${resultText(end.result, end.reason, game.mode === 'local' ? null : game.me)}`;
+    view.status.textContent = `${t('Партия окончена', 'Game over')}: ${resultText(end.result, end.reason, game.mode === 'local' ? null : game.me)}`;
   } else if (game.mode === 'online' && game.online.status === 'waiting') {
-    view.status.textContent = 'Ждём, пока соперник откроет приглашение…';
+    view.status.textContent = t('Ждём, пока соперник откроет приглашение…', 'Waiting for your friend to open the invite…');
   } else {
-    const check = inCheck(state) ? 'Шах! ' : '';
+    const check = inCheck(state) ? t('Шах! ', 'Check! ') : '';
     let who;
-    if (game.mode === 'local') who = state.turn === 'w' ? 'Ход белых' : 'Ход чёрных';
-    else if (game.mode === 'online' && !game.online.you) who = state.turn === 'w' ? 'Ход белых' : 'Ход чёрных';
-    else if (state.turn === game.me) who = 'Твой ход';
-    else who = game.mode === 'bot' ? 'Бот думает…' : 'Ход соперника';
+    if (game.mode === 'local') who = state.turn === 'w' ? t('Ход белых', 'White to move') : t('Ход чёрных', 'Black to move');
+    else if (game.mode === 'online' && !game.online.you) who = state.turn === 'w' ? t('Ход белых', 'White to move') : t('Ход чёрных', 'Black to move');
+    else if (state.turn === game.me) who = t('Твой ход', 'Your move');
+    else who = game.mode === 'bot' ? t('Бот думает…', 'Bot is thinking…') : t('Ход соперника', 'Opponent’s move');
     view.status.textContent = check + who;
     if (check) view.status.classList.add('in-check');
   }
 
   // ходы парами: 1. e4 e5
-  const sans = game.moves.map((uci, i) => san(game.states[i], findMove(game.states[i], uci), true));
+  const sans = game.moves.map((uci, i) => san(game.states[i], findMove(game.states[i], uci), lang === 'ru'));
   let html = '';
   for (let i = 0; i < sans.length; i += 2) {
     html += `<span class="mv"><i>${i / 2 + 1}.</i>${sans[i]}${sans[i + 1] ? ` ${sans[i + 1]}` : ''}</span>`;
   }
-  view.moves.innerHTML = html || '<span class="mv empty">Ходов пока нет</span>';
+  view.moves.innerHTML = html || `<span class="mv empty">${t('Ходов пока нет', 'No moves yet')}</span>`;
   view.moves.scrollLeft = view.moves.scrollWidth;
 
   const btn = (act, label, extra = '') => `<button type="button" class="btn-glass press" data-act="${act}" ${extra}>${label}</button>`;
   const buttons = [];
-  if (game.mode !== 'online') buttons.push(btn('undo', '↶ Ход', `aria-label="Отменить ход" ${game.moves.length ? '' : 'disabled'}`));
-  buttons.push(btn('flip', '⇅ Доска', 'aria-label="Перевернуть доску"'));
-  if (end.over) buttons.push(btn('new', 'Заново'));
-  else if (game.mode === 'online') buttons.push(btn('resign', game.online.status === 'waiting' ? 'Отменить' : 'Сдаться'));
-  else buttons.push(btn('resign', 'Сдаться', game.moves.length ? '' : 'disabled'));
-  buttons.push(btn('menu', 'Меню'));
+  if (game.mode !== 'online') buttons.push(btn('undo', t('↶ Ход', '↶ Undo'), `aria-label="${t('Отменить ход', 'Undo move')}" ${game.moves.length ? '' : 'disabled'}`));
+  buttons.push(btn('flip', t('⇅ Доска', '⇅ Flip'), `aria-label="${t('Перевернуть доску', 'Flip board')}"`));
+  if (end.over) buttons.push(btn('new', t('Заново', 'New')));
+  else if (game.mode === 'online') buttons.push(btn('resign', game.online.status === 'waiting' ? t('Отменить', 'Cancel') : t('Сдаться', 'Resign')));
+  else buttons.push(btn('resign', t('Сдаться', 'Resign'), game.moves.length ? '' : 'disabled'));
+  buttons.push(btn('menu', t('Меню', 'Menu')));
   view.actions.innerHTML = buttons.join('');
 
   renderOver(end);
@@ -527,17 +544,17 @@ function renderOver(end) {
   }
   view.overShown = game.moves.length;
   let headline;
-  if (end.result === '1/2-1/2') headline = 'Ничья';
-  else if (!end.result) headline = 'Партия отменена';
-  else if (game.mode === 'local') headline = end.result === '1-0' ? 'Белые победили' : 'Чёрные победили';
-  else headline = (end.result === '1-0' ? 'w' : 'b') === game.me ? 'Победа! 🏆' : 'Поражение';
+  if (end.result === '1/2-1/2') headline = t('Ничья', 'Draw');
+  else if (!end.result) headline = t('Партия отменена', 'Game cancelled');
+  else if (game.mode === 'local') headline = end.result === '1-0' ? t('Белые победили', 'White wins') : t('Чёрные победили', 'Black wins');
+  else headline = (end.result === '1-0' ? 'w' : 'b') === game.me ? t('Победа! 🏆', 'Victory! 🏆') : t('Поражение', 'Defeat');
   view.over.innerHTML = `
     <div class="chess-over-card">
       <b>${headline}</b>
-      <span>${REASONS[end.reason] ?? ''}</span>
+      <span>${reasonText(end.reason)}</span>
       <div class="chess-over-actions">
-        <button type="button" class="btn-primary press" data-over="new">Новая партия</button>
-        <button type="button" class="btn-glass press" data-over="look">Посмотреть доску</button>
+        <button type="button" class="btn-primary press" data-over="new">${t('Новая партия', 'New game')}</button>
+        <button type="button" class="btn-glass press" data-over="look">${t('Посмотреть доску', 'View board')}</button>
       </div>
     </div>`;
   view.over.hidden = false;
@@ -602,7 +619,7 @@ function onBoardClick(e) {
 
 function choosePromotion(from, to, color) {
   const pieces = color === 'w' ? ['Q', 'R', 'B', 'N'] : ['q', 'r', 'b', 'n'];
-  view.promo.innerHTML = `<div class="chess-promo-card"><b>Превратить пешку в</b><div>${pieces.map((p) => `<button type="button" class="pc-btn press ${color === 'w' ? 'white' : 'black'}" data-p="${p}">${GLYPH[p.toUpperCase()]}︎</button>`).join('')}</div></div>`;
+  view.promo.innerHTML = `<div class="chess-promo-card"><b>${t('Превратить пешку в', 'Promote pawn to')}</b><div>${pieces.map((p) => `<button type="button" class="pc-btn press ${color === 'w' ? 'white' : 'black'}" data-p="${p}">${GLYPH[p.toUpperCase()]}︎</button>`).join('')}</div></div>`;
   view.promo.hidden = false;
   view.promo.onclick = (e) => {
     const p = e.target.closest('[data-p]')?.dataset.p;
@@ -619,7 +636,7 @@ async function userMove(uci) {
     try {
       applyOnline(await callBot('chessMove', { code: game.code, uci, ply }));
     } catch (err) {
-      toast(err.message || 'Ход не прошёл');
+      toast(errText(err, 'Ход не прошёл', 'Move failed'));
       try {
         const online = await callBot('chessGet', { code: game.code });
         game = startGame('online', { moves: online.moves, me: game.me, code: game.code, online });
@@ -794,17 +811,17 @@ function ask(text) {
 async function resign() {
   if (game.mode === 'online') {
     const waiting = game.online.status === 'waiting';
-    if (!(await ask(waiting ? 'Отменить приглашение?' : 'Сдаться в этой партии?'))) return;
+    if (!(await ask(waiting ? t('Отменить приглашение?', 'Cancel the invite?') : t('Сдаться в этой партии?', 'Resign this game?')))) return;
     try {
       applyOnline(await callBot('chessResign', { code: game.code }));
       if (waiting) renderMenu();
       else refresh();
     } catch (err) {
-      toast(err.message || 'Не получилось');
+      toast(errText(err, 'Не получилось', 'Something went wrong'));
     }
     return;
   }
-  if (!(await ask('Сдаться?'))) return;
+  if (!(await ask(t('Сдаться?', 'Resign?')))) return;
   const loser = game.mode === 'bot' ? game.me : current().turn;
   game.resigned = { over: true, result: loser === 'w' ? '0-1' : '1-0', reason: 'resign', winner: loser === 'w' ? 'b' : 'w' };
   botJob++;

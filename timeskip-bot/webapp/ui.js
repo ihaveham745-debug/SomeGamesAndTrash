@@ -1,10 +1,11 @@
 // Общие мелочи интерфейса: формат чисел, вибро, всплывашки, фишки ставок, карты.
 
 import { isRed } from './lib/cards.js';
+import { locale, t } from './i18n.js';
 
 export const tg = window.Telegram?.WebApp;
 
-export const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
+export const fmt = (n) => Math.round(n).toLocaleString(locale());
 export const short = (n) => (n >= 1000 ? `${+(n / 1000).toFixed(1)}k` : String(n));
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -34,7 +35,7 @@ export function toast(text) {
  * 'win' — «ОРА!», 'big' — «ОРА ОРА ОРА!», 'draw' — «Яре-яре…»,
  * 'tbc' — стоп-кадр в сепии и стрелка «To Be Continued».
  */
-const FX_TEXT = { win: 'ОРА!', big: 'ОРА ОРА ОРА ОРА!', draw: 'Яре-яре…' };
+const FX_TEXT = () => ({ win: t('ОРА!', 'ORA!'), big: t('ОРА ОРА ОРА ОРА!', 'ORA ORA ORA ORA!'), draw: t('Яре-яре…', 'Yare yare…') });
 
 export function jojo(kind) {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches && kind !== 'tbc') return;
@@ -47,7 +48,8 @@ export function jojo(kind) {
     document.body.classList.add('jj-sepia');
     setTimeout(() => document.body.classList.remove('jj-sepia'), 2200);
   } else {
-    const words = FX_TEXT[kind] ?? FX_TEXT.win;
+    const texts = FX_TEXT();
+    const words = texts[kind] ?? texts.win;
     el.innerHTML = `<b data-text="${words}">${words}</b>`;
   }
   document.body.append(el);
