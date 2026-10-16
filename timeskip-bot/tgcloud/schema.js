@@ -2,13 +2,14 @@
 
 import { index, integer, sql, table, text } from 'sdk/db';
 
-// Шахматные партии с другом онлайн. code — короткий код для ссылки-приглашения.
+// Партии с другом онлайн — шахматы и шашки (kind). code — короткий код для ссылки-приглашения.
 // moves — ходы через пробел в UCI ('e2e4 e7e5'); позицию сервер восстанавливает по ним.
 // status: 'waiting' — ждём соперника, 'active' — идёт, 'over' — закончена (result, reason).
 // *_seen — когда игрок последний раз смотрел партию (unix-секунды): если давно — шлём ему сообщение о ходе.
 export const chessGames = table('chess_games', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   code: text('code').notNull().unique(),
+  kind: text('kind').notNull().default('chess'), // 'chess' | 'checkers'
   whiteId: integer('white_id'),
   whiteName: text('white_name'),
   blackId: integer('black_id'),

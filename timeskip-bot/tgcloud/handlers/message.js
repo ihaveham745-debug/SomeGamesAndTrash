@@ -7,7 +7,7 @@ const APP_URL = 'https://app8843830120.tgcloud.ai/';
 const WELCOME = [
   '🎰 <b>TimeSkip</b> — мини-игры, чтобы убить время',
   '',
-  '🎰 Слоты · 🃏 Блэкджек · 🎡 Рулетка · ♠️ Видеопокер · 🧱 Блоки · ♟ Шахматы',
+  '🎰 Слоты · 🃏 Блэкджек · 🎡 Рулетка · ♠️ Видеопокер · 🧱 Блоки · ♟ Шахматы · ⛀ Шашки',
   '',
   'Играем на игровые фишки: их нельзя купить или вывести, а когда закончатся — дадим ещё бесплатно.',
   '',
@@ -39,12 +39,15 @@ export default async function (message, ctx) {
   }
 
   // Приглашение в шахматы: t.me/<бот>?start=chess_<код> → кнопка, открывающая эту партию.
-  const invite = /^\/start\s+chess_([a-z0-9]{4,16})$/i.exec(message.text?.trim() ?? '');
+  // t.me/<бот>?start=chk_<код> — то же для шашек.
+  const invite = /^\/start\s+(chess|chk)_([a-z0-9]{4,16})$/i.exec(message.text?.trim() ?? '');
   if (invite) {
+    const checkers = invite[1].toLowerCase() === 'chk';
+    const icon = checkers ? '⛀' : '♟';
     await api.sendMessage({
       chat_id: message.chat.id,
-      text: '♟ Тебя позвали сыграть в шахматы!\nЖми кнопку — партия откроется.',
-      reply_markup: { inline_keyboard: [[{ text: '♟ Открыть партию', web_app: { url: `${APP_URL}?chess=${invite[1].toLowerCase()}` } }]] },
+      text: `${icon} Тебя позвали сыграть в ${checkers ? 'шашки' : 'шахматы'}!\nЖми кнопку — партия откроется.`,
+      reply_markup: { inline_keyboard: [[{ text: `${icon} Открыть партию`, web_app: { url: `${APP_URL}?${checkers ? 'checkers' : 'chess'}=${invite[2].toLowerCase()}` } }]] },
     });
   }
 

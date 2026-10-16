@@ -1,8 +1,9 @@
-// POST /api/chessList — мои онлайн-партии, свежие сверху.
+// POST /api/chessList { kind } — мои онлайн-партии в шахматы или шашки, свежие сверху.
 
 import { myGames, requireUser, view } from '../lib/chessgames.js';
 
 export default async function (input, ctx) {
   const user = requireUser(ctx);
-  return { games: (await myGames(user.id)).map((g) => view(g, user.id)) };
+  const kind = input?.kind === 'checkers' ? 'checkers' : 'chess';
+  return { games: (await myGames(user.id, kind)).map((g) => view(g, user.id)) };
 }

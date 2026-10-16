@@ -3,4 +3,6 @@
 
 import { copyFileSync } from 'node:fs';
 
-copyFileSync(new URL('../webapp/lib/chess.js', import.meta.url), new URL('../tgcloud/lib/chess.js', import.meta.url));
+for (const name of ['chess.js', 'checkers.js']) {
+  copyFileSync(new URL(`../webapp/lib/${name}`, import.meta.url), new URL(`../tgcloud/lib/${name}`, import.meta.url));
+}

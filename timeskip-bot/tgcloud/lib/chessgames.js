@@ -1,9 +1,23 @@
-// lib/chessgames — шахматы с другом онлайн: партии в базе, проверка ходов, уведомления.
+// lib/chessgames — шахматы и шашки с другом онлайн: партии в базе, проверка ходов, уведомления.
 
 import { api, db, EndpointError } from 'sdk';
 import { and, desc, eq, isNull, or } from 'sdk/db';
 import { chessGames } from '../schema.js';
-import { findMove, outcome, replay, san } from './chess.js';
+import * as chess from './chess.js';
+import * as checkers from './checkers.js';
+
+// Правила каждой игры: восстановить позицию, найти ход, итог, запись хода.
+const RULES = {
+  chess: {
+    replay: chess.replay, findMove: chess.findMove, outcome: chess.outcome,
+    notation: (state, move) => chess.san(state, move, true), name: 'шахматы', icon: '♟',
+  },
+  checkers: {
+    replay: checkers.replay, findMove: checkers.findMove, outcome: checkers.outcome,
+    notation: checkers.notation, name: 'шашки', icon: '⛀',
+  },
+};
+const rulesOf = (game) => RULES[game.kind] ?? RULES.chess;
 
 export const APP_URL = 'https://app8843830120.tgcloud.ai/';
 const NOTIFY_IF_AWAY = 20; // секунд: если соперник не смотрит партию дольше — пишем ему в личку
@@ -34,6 +48,7 @@ export function view(game, userId) {
   const you = game.whiteId === userId ? 'w' : game.blackId === userId ? 'b' : null;
   return {
     code: game.code,
+    kind: game.kind ?? 'chess',
     white: game.whiteId ? { id: game.whiteId, name: game.whiteName } : null,
     black: game.blackId ? { id: game.blackId, name: game.blackName } : null,
     moves: movesOf(game),
@@ -52,14 +67,15 @@ export async function getGame(code) {
   return game;
 }
 
-export async function createGame(user, color) {
+export async function createGame(user, color, kind = 'chess') {
+  if (!RULES[kind]) throw new EndpointError('Нет такой игры', { code: 'BAD_KIND' });
   const side = color === 'w' || color === 'b' ? color : Math.random() < 0.5 ? 'w' : 'b';
   const seat = side === 'w'
     ? { whiteId: user.id, whiteName: playerName(user), whiteSeen: now() }
     : { blackId: user.id, blackName: playerName(user), blackSeen: now() };
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      const [game] = await db.insert(chessGames).values({ code: randomCode(), ...seat }).returning();
+      const [game] = await db.insert(chessGames).values({ code: randomCode(), kind, ...seat }).returning();
       return game;
     } catch (err) {
       if (attempt === 4) throw err; // совпал код — пробуем другой
@@ -82,7 +98,7 @@ export async function joinGame(game, user) {
   if (!updated) return getGame(game.code);
   // Создателю — что соперник пришёл.
   const host = game.whiteId ?? game.blackId;
-  await notify(host, `♟ <b>${escapeHtml(playerName(user))}</b> принял(а) вызов — партия началась!`, updated.code);
+  await notify(host, `${rulesOf(updated).icon} <b>${escapeHtml(playerName(user))}</b> принял(а) вызов — партия началась!`, updated);
   return updated;
 }
 
@@ -100,14 +116,15 @@ export async function makeMove(game, user, uci, ply) {
   if (game.status !== 'active') throw new EndpointError('Партия не идёт', { code: 'NOT_ACTIVE' });
   const moves = movesOf(game);
   if (ply !== moves.length) throw new EndpointError('Позиция уже изменилась', { code: 'STALE' });
-  const state = replay(moves);
+  const rules = rulesOf(game);
+  const state = rules.replay(moves);
   if (state.turn !== you) throw new EndpointError('Сейчас ход соперника', { code: 'NOT_YOUR_TURN' });
-  const move = findMove(state, uci);
+  const move = rules.findMove(state, uci);
   if (!move) throw new EndpointError('Так ходить нельзя', { code: 'ILLEGAL' });
 
-  const notation = san(state, move, true);
-  const after = replay([...moves, uci]);
-  const end = outcome(after);
+  const notation = rules.notation(state, move);
+  const after = rules.replay([...moves, uci]);
+  const end = rules.outcome(after);
   const set = {
     moves: [...moves, uci].join(' '),
     updated: now(),
@@ -124,10 +141,11 @@ export async function makeMove(game, user, uci, ply) {
   const seen = you === 'w' ? game.blackSeen : game.whiteSeen;
   if (now() - seen > NOTIFY_IF_AWAY) {
     const who = escapeHtml(playerName(user));
+    const icon = rules.icon;
     const text = end.over
-      ? `♟ ${who}: ${notation}\n${endText(end, you === 'w' ? 'b' : 'w')}`
-      : `♟ ${who} сходил(а) <b>${notation}</b>. Твой ход!`;
-    await notify(opponent, text, game.code);
+      ? `${icon} ${who}: ${notation}\n${endText(end, you === 'w' ? 'b' : 'w')}`
+      : `${icon} ${who} сходил(а) <b>${notation}</b>. Твой ход!`;
+    await notify(opponent, text, game);
   }
   return updated;
 }
@@ -143,20 +161,23 @@ export async function resign(game, user) {
     .where(eq(chessGames.id, game.id)).returning();
   if (result) {
     const opponent = you === 'w' ? game.blackId : game.whiteId;
-    await notify(opponent, `🏳 ${escapeHtml(playerName(user))} сдался(-ась). Победа твоя!`, game.code);
+    await notify(opponent, `🏳 ${escapeHtml(playerName(user))} сдался(-ась). Победа твоя!`, game);
   }
   return updated;
 }
 
-export async function myGames(userId) {
+export async function myGames(userId, kind = 'chess') {
   return db.select().from(chessGames)
-    .where(or(eq(chessGames.whiteId, userId), eq(chessGames.blackId, userId)))
+    .where(and(eq(chessGames.kind, kind), or(eq(chessGames.whiteId, userId), eq(chessGames.blackId, userId))))
     .orderBy(desc(chessGames.updated)).limit(15).all();
 }
 
 function endText(end, forColor) {
   if (end.reason === 'mate') return end.winner === forColor ? 'Мат! Ты победил(а) 🏆' : 'Мат. Партия проиграна.';
-  const why = { stalemate: 'пат', fifty: 'правило 50 ходов', repetition: 'троекратное повторение', material: 'мало фигур' }[end.reason];
+  if (end.reason === 'nomoves') return end.winner === forColor ? 'У соперника не осталось ходов. Победа! 🏆' : 'Ходов не осталось. Партия проиграна.';
+  const why = {
+    stalemate: 'пат', fifty: 'правило 50 ходов', repetition: 'троекратное повторение', material: 'мало фигур', kings: '15 ходов дамками без взятий',
+  }[end.reason];
   return `Ничья — ${why}.`;
 }
 
@@ -165,14 +186,15 @@ function escapeHtml(s) {
 }
 
 /** Сообщение игроку в личку с кнопкой «Открыть партию». Если бот ему писать не может — молча пропускаем. */
-async function notify(userId, text, code) {
+async function notify(userId, text, game) {
   if (!userId) return;
+  const param = game.kind === 'checkers' ? 'checkers' : 'chess';
   try {
     await api.sendMessage({
       chat_id: userId,
       text,
       parse_mode: 'HTML',
-      reply_markup: { inline_keyboard: [[{ text: '♟ Открыть партию', web_app: { url: `${APP_URL}?chess=${code}` } }]] },
+      reply_markup: { inline_keyboard: [[{ text: `${rulesOf(game).icon} Открыть партию`, web_app: { url: `${APP_URL}?${param}=${game.code}` } }]] },
     });
   } catch (err) {
     console.warn('chess notify failed', err.description ?? err);

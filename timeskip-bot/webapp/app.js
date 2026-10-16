@@ -2,6 +2,7 @@
 
 import * as blackjack from './games/blackjack.js';
 import * as blocks from './games/blocks.js';
+import * as checkers from './games/checkers.js';
 import * as chess from './games/chess.js';
 import * as poker from './games/poker.js';
 import * as roulette from './games/roulette.js';
@@ -10,7 +11,7 @@ import { lang, setLang, t } from './i18n.js';
 import { fmt, haptic, jojo, toast, tg } from './ui.js';
 import { REFILL, createWallet } from './wallet.js';
 
-const GAMES = { slots, blackjack, roulette, poker, blocks, chess };
+const GAMES = { slots, blackjack, roulette, poker, blocks, chess, checkers };
 const MIN_BET = 10;
 
 const screen = document.getElementById('screen');
@@ -69,6 +70,7 @@ const TILES = () => [
   { id: 'poker', name: t('Покер', 'Poker'), sub: t('Видеопокер, валеты и выше', 'Video poker, Jacks or Better'), art: '<div class="art-suits"><b>♠</b><b class="r">♥</b><b class="r">♦</b><b>♣</b></div>' },
   { id: 'blocks', name: t('Блоки', 'Blocks'), sub: t('Как Block Blast: линии на рекорд', 'Like Block Blast: clear lines, beat your best'), art: '<div class="art-blocks">' + 'c3,c3,,c6,c3,c3,c6,c6,c1,,c6,c4,c1,c1,c1,c4'.split(',').map((c) => `<i class="${c}"></i>`).join('') + '</div>' },
   { id: 'chess', name: t('Шахматы', 'Chess'), sub: t('С ботом, вдвоём или с другом онлайн', 'Vs bot, pass-and-play or online with a friend'), art: '<div class="art-chess"><span>♞\uFE0E</span></div>' },
+  { id: 'checkers', name: t('Шашки', 'Checkers'), sub: t('Русские шашки: с ботом, вдвоём или онлайн', 'Russian draughts: vs bot, two players or online'), art: '<div class="art-checkers"><i class="w"></i><i class="b"></i><i class="b k"></i><i class="w k"></i></div>' },
 ];
 
 function renderHome() {
@@ -79,7 +81,7 @@ function renderHome() {
         <button type="button" class="press" role="radio" aria-checked="${lang === 'en'}" data-lang="en">EN</button>
       </div>
       <h2>${t('Убей время', 'Kill some time')}</h2>
-      <p>${t('Шесть игр, чтобы скоротать время. Выбирай.', 'Six games to pass the time. Pick one.')}</p>
+      <p>${t('Семь игр, чтобы скоротать время. Выбирай.', 'Seven games to pass the time. Pick one.')}</p>
     </section>
     ${wallet.balance < MIN_BET ? `<button type="button" class="refill press" data-act="refill"><span class="coin"></span>${t('Фишки закончились — взять ещё', 'Out of chips — take')} ${fmt(REFILL)}</button>` : ''}
     <div class="tiles">
@@ -165,9 +167,12 @@ if (tg) {
 }
 
 // Приглашение в шахматы: бот открывает приложение с ?chess=<код>.
-const chessCode = new URLSearchParams(location.search).get('chess')
-  ?? /^chess_([a-z0-9]+)$/i.exec(tg?.initDataUnsafe?.start_param ?? '')?.[1];
+const query = new URLSearchParams(location.search);
+const startParam = tg?.initDataUnsafe?.start_param ?? '';
+const chessCode = query.get('chess') ?? /^chess_([a-z0-9]+)$/i.exec(startParam)?.[1];
+const checkersCode = query.get('checkers') ?? /^chk_([a-z0-9]+)$/i.exec(startParam)?.[1];
 if (chessCode) show('chess', { chess: chessCode.toLowerCase() });
+else if (checkersCode) show('checkers', { checkers: checkersCode.toLowerCase() });
 else show('home');
 wallet.load().then(() => {
   wallet.render();
