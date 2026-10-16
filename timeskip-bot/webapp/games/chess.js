@@ -6,7 +6,7 @@ import {
   colorOf, findMove, fromFen, inCheck, legalMoves, outcome, play, san, squareName, toUci,
 } from '../lib/chess.js';
 import { bestMove } from '../lib/chessai.js';
-import { haptic, sleep, toast, tg } from '../ui.js';
+import { haptic, jojo, sleep, tg, toast } from '../ui.js';
 
 export const title = 'Шахматы';
 
@@ -548,6 +548,9 @@ function renderOver(end) {
   };
   const won = end.result && end.result !== '1/2-1/2' && (game.mode === 'local' || (end.result === '1-0' ? 'w' : 'b') === game.me);
   haptic(won ? 'success' : end.result === '1/2-1/2' ? 'warning' : 'error');
+  if (won) jojo('big');
+  else if (end.result === '1/2-1/2') jojo('draw');
+  else if (end.result) jojo('tbc');
 }
 
 // --- Ходы игрока ---

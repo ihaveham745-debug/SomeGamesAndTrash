@@ -3,7 +3,7 @@
 
 import { COMBO_WINDOW, PIECES, SIZE, canPlace, fitsAnywhere, fullLines, newGame, play } from '../lib/blocks.js';
 import { sfx, setSound, soundOn } from '../sound.js';
-import { fmt, haptic, tg } from '../ui.js';
+import { fmt, haptic, jojo, tg } from '../ui.js';
 
 export const title = 'Блоки';
 
@@ -416,6 +416,7 @@ async function place(index, row, col) {
 async function gameOver() {
   haptic('error');
   sfx.over();
+  jojo('tbc');
   if (best === st.score) cloud?.setItem(CLOUD_BEST, String(best), () => {});
   renderTray();
   for (let r = SIZE - 1; r >= 0; r--) {

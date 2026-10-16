@@ -6,7 +6,7 @@ import * as chess from './games/chess.js';
 import * as poker from './games/poker.js';
 import * as roulette from './games/roulette.js';
 import * as slots from './games/slots.js';
-import { fmt, haptic, toast, tg } from './ui.js';
+import { fmt, haptic, jojo, toast, tg } from './ui.js';
 import { REFILL, createWallet } from './wallet.js';
 
 const GAMES = { slots, blackjack, roulette, poker, blocks, chess };
@@ -23,8 +23,12 @@ let current = 'home';
 /** Не хватило на ставку: если фишек почти нет — предложить взять ещё. */
 function noChips() {
   haptic('error');
-  if (wallet.balance < MIN_BET) refillSheet();
-  else toast('Не хватает фишек на такую ставку');
+  if (wallet.balance < MIN_BET) {
+    jojo('tbc');
+    setTimeout(refillSheet, 1600);
+    return;
+  }
+  toast('Не хватает фишек на такую ставку');
 }
 
 function refillSheet() {
@@ -126,7 +130,7 @@ tg?.BackButton?.onClick(goHome);
 if (tg) {
   tg.ready();
   tg.expand();
-  const color = '#04050a';
+  const color = '#0d0418';
   try {
     if (tg.isVersionAtLeast('6.1')) {
       tg.setHeaderColor(tg.isVersionAtLeast('6.9') ? color : 'bg_color');

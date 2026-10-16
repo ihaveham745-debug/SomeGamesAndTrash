@@ -2,7 +2,7 @@
 
 import { randInt } from '../lib/random.js';
 import { OUTSIDE, WHEEL, colorOf, totalPayout } from '../lib/roulette.js';
-import { chipPicker, fmt, haptic, short, toast } from '../ui.js';
+import { chipPicker, fmt, haptic, jojo, short, toast } from '../ui.js';
 
 export const title = 'Рулетка';
 
@@ -250,6 +250,7 @@ async function spin() {
     ? `<span class="num ${colorOf(result)}">${result}</span> ${color} · ${profit > 0 ? `<b>+${fmt(profit)}</b>` : profit === 0 ? 'в ноль' : `вернулось ${fmt(payout)}`}`
     : `<span class="num ${colorOf(result)}">${result}</span> ${color} · мимо`;
   haptic(profit > 0 ? 'success' : payout ? 'warning' : 'error');
+  if (profit > 0) jojo(profit >= staked * 5 ? 'big' : 'win');
   ctxRef.wallet.render({ bump: profit > 0 });
   view?.board.querySelector(`[data-spot="n${result}"]`)?.classList.add('win');
   render(text, profit > 0 ? 'won' : payout ? '' : 'lost');

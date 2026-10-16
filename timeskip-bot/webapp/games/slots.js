@@ -2,7 +2,7 @@
 
 import { randInt } from '../lib/random.js';
 import { SYMBOLS, TWO_CHERRIES, multiplier, spin } from '../lib/slots.js';
-import { chipPicker, fmt, haptic } from '../ui.js';
+import { chipPicker, fmt, haptic, jojo } from '../ui.js';
 
 export const title = 'Слоты';
 
@@ -105,6 +105,7 @@ async function play(wallet, noChips) {
     v.msg.className = `slot-msg won${win >= bet * 20 ? ' big' : ''}`;
     v.reels.forEach((r, i) => r.classList.toggle('win', result[0] === result[2] || result[i] === '🍒'));
     haptic('success');
+    jojo(win >= bet * 20 ? 'big' : 'win');
   } else {
     v.msg.textContent = 'Мимо. Ещё разок?';
   }

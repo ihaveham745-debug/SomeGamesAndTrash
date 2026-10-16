@@ -29,6 +29,31 @@ export function toast(text) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
+/**
+ * Эффекты в духе JoJo поверх экрана:
+ * 'win' — «ОРА!», 'big' — «ОРА ОРА ОРА!», 'draw' — «Яре-яре…»,
+ * 'tbc' — стоп-кадр в сепии и стрелка «To Be Continued».
+ */
+const FX_TEXT = { win: 'ОРА!', big: 'ОРА ОРА ОРА ОРА!', draw: 'Яре-яре…' };
+
+export function jojo(kind) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches && kind !== 'tbc') return;
+  document.querySelector('.jj-fx')?.remove();
+  const el = document.createElement('div');
+  el.className = `jj-fx jj-${kind}`;
+  el.setAttribute('aria-hidden', 'true');
+  if (kind === 'tbc') {
+    el.innerHTML = '<div class="tbc"><span>To Be Continued</span></div>';
+    document.body.classList.add('jj-sepia');
+    setTimeout(() => document.body.classList.remove('jj-sepia'), 2200);
+  } else {
+    const words = FX_TEXT[kind] ?? FX_TEXT.win;
+    el.innerHTML = `<b data-text="${words}">${words}</b>`;
+  }
+  document.body.append(el);
+  setTimeout(() => el.remove(), kind === 'tbc' ? 2600 : 1400);
+}
+
 export const CHIP_VALUES = [10, 25, 100, 500];
 
 /**

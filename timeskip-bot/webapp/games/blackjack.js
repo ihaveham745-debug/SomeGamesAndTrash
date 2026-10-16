@@ -2,7 +2,7 @@
 
 import { dealerShouldHit, handValue, isBlackjack, isBust, settle } from '../lib/blackjack.js';
 import { newDeck } from '../lib/cards.js';
-import { cardEl, chipPicker, fmt, haptic, sleep } from '../ui.js';
+import { cardEl, chipPicker, fmt, haptic, jojo, sleep } from '../ui.js';
 
 export const title = 'Блэкджек';
 
@@ -180,6 +180,8 @@ function finish() {
   [st.message, st.tone] = texts[result];
   st.phase = 'done';
   haptic(profit > 0 ? 'success' : profit < 0 ? 'error' : 'warning');
+  if (profit > 0) jojo(result === 'blackjack' ? 'big' : 'win');
+  else if (profit === 0) jojo('draw');
   ctxRef.wallet.render({ bump: profit > 0 });
   render();
 }

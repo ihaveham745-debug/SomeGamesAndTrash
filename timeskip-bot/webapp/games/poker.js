@@ -2,7 +2,7 @@
 
 import { newDeck } from '../lib/cards.js';
 import { PAYTABLE, evaluate } from '../lib/poker.js';
-import { cardEl, chipPicker, fmt, haptic, setFace, sleep } from '../ui.js';
+import { cardEl, chipPicker, fmt, haptic, jojo, setFace, sleep } from '../ui.js';
 
 export const title = 'Покер';
 
@@ -124,6 +124,7 @@ async function drawCards() {
   st.message = st.win ? `${st.win.name}! <b>+${fmt(payout - st.bet)}</b>` : 'Ничего не собралось';
   if (st.win?.mult === 1) st.message = `${st.win.name} — ставка вернулась`;
   haptic(payout > st.bet ? 'success' : payout ? 'warning' : 'error');
+  if (payout > st.bet) jojo(st.win.mult >= 9 ? 'big' : 'win');
   ctxRef.wallet.render({ bump: payout > st.bet });
   render();
 }
