@@ -44,30 +44,30 @@ test('таблица целая: 8 вариантов, уроки в звонк�
 test('общие уроки — из колонки класса, профильные — из колонки профиля', () => {
   // 10а гум во вторник: профильные — как у гум, 4–5 физкультура, 6–7 литература (как у 10а)
   assert.deepEqual(day('a-gum', '2026-10-20'), [
-    '1 Химия (база) 210', '2 Биология (база) 212', '3 Английский язык 111',
-    '4 Физкультура спортзал', '5 Физкультура спортзал', '6 Литература 211', '7 Литература 211',
+    '1 химия (база) 210', '2 биология (база) 212', '3 английский язык 111',
+    '4 физкультура спортзал', '5 физкультура спортзал', '6 литература 211', '7 литература 211',
   ]);
   assert.deepEqual(day('b-gum', '2026-10-20').slice(3), [
-    '4 Литература 211', '5 Литература 211', '6 Физкультура спортзал', '7 Физкультура спортзал',
+    '4 литература 211', '5 литература 211', '6 физкультура спортзал', '7 физкультура спортзал',
   ]);
   assert.deepEqual(day('a-se', '2026-10-19'), [
-    '1 Обществознание 113', '2 Обществознание 113', '3 Английский язык 207', '4 Английский язык 207',
-    '5 Разговоры о важном 210', '6 Математика 115', '7 Математика 115',
+    '1 обществознание 113', '2 обществознание 113', '3 английский язык 207', '4 английский язык 207',
+    '5 разговоры о важном 210', '6 математика 115', '7 математика 115',
   ]);
   // 10б сэ: профильная математика в 115, «Разговоры» — с 10б в 212
-  assert.deepEqual(day('b-se', '2026-10-19').slice(4), ['5 Разговоры о важном 212', '6 Математика 115', '7 Математика 115']);
+  assert.deepEqual(day('b-se', '2026-10-19').slice(4), ['5 разговоры о важном 212', '6 математика 115', '7 математика 115']);
   // 10а гум в среду: русский с 10а, 3-й — английский гум, математика гум в 210, история с 10а
   assert.deepEqual(day('a-gum', '2026-10-21'), [
-    '1 Русский язык 206', '2 Русский язык 206', '3 Английский язык 114', '4 Математика 210',
-    '5 Математика 210', '6 История 114', '7 История 114',
+    '1 русский язык 206', '2 русский язык 206', '3 английский язык 114', '4 математика 210',
+    '5 математика 210', '6 история 114', '7 история 114',
   ]);
-  assert.deepEqual(day('b-en', '2026-10-22').slice(0, 4), ['1 Россия — мои горизонты 212', '2 Биохимия 210', '3 Химия 210', '4 Химия 210']);
+  assert.deepEqual(day('b-en', '2026-10-22').slice(0, 4), ['1 россия — мои горизонты 212', '2 биохимия 210', '3 химия 210', '4 химия 210']);
   // пт: у сэ 7-го урока нет, у тех — физика; обществознание тех + ен в 113
   assert.equal(day('a-se', '2026-10-23').length, 6);
-  assert.equal(day('b-tech', '2026-10-23').at(-1), '7 Физика 213');
-  assert.equal(day('a-tech', '2026-10-23')[4], '5 Обществознание 113');
-  assert.equal(day('b-en', '2026-10-23')[4], '5 Обществознание 113');
-  assert.equal(day('a-gum', '2026-10-23')[5], '6 Деловой английский 114');
+  assert.equal(day('b-tech', '2026-10-23').at(-1), '7 физика 213');
+  assert.equal(day('a-tech', '2026-10-23')[4], '5 обществознание 113');
+  assert.equal(day('b-en', '2026-10-23')[4], '5 обществознание 113');
+  assert.equal(day('a-gum', '2026-10-23')[5], '6 деловой английский 114');
   assert.deepEqual(day('a-se', '2026-10-24'), []); // суббота
 });
 
@@ -86,35 +86,35 @@ test('выходные и звонки', () => {
 
 test('тексты дня и недели', () => {
   const text = formatDay('b-gum', parseDate('2026-10-14'), at('2026-10-14', 9, 45), [
-    { due: '2026-10-14', subject: 'Английский язык', text: 'упр. 5', authorName: 'Аня' },
+    { due: '2026-10-14', subject: 'английский язык', text: 'упр. 5', authorName: 'аня' },
   ]);
-  assert.match(text, /Сегодня · среда, 14 октября<\/b> · 10б · гум/);
-  assert.match(text, /Идёт 3-й урок/);
-  assert.match(text, /📝 упр\. 5 <i>— Аня<\/i>/);
+  assert.match(text, /сегодня · среда, 14 октября<\/b> · 10б · гум/);
+  assert.match(text, /идёт 3-й урок/);
+  assert.match(text, /упр\. 5 <i>— аня<\/i>/);
   assert.match(text, /каб\. 114/);
   const week = formatWeek('a-tech', parseDate('2026-10-14'), at('2026-10-14', 9));
   assert.match(week, /12–16 октября/);
-  assert.ok(!week.includes('Суббота'));
+  assert.ok(!week.includes('суббота'));
 });
 
-test('предметы и группы для ДЗ', () => {
-  assert.ok(subjectsOf('a-gum').includes('Стилистика'));
-  assert.ok(!subjectsOf('a-se').includes('Стилистика'));
+test('предметы и группы для дз', () => {
+  assert.ok(subjectsOf('a-gum').includes('стилистика'));
+  assert.ok(!subjectsOf('a-se').includes('стилистика'));
   assert.deepEqual(groupsOf('a-gum'), ['a', 'gum']);
-  assert.equal(groupOf('a-gum', 'Стилистика'), 'gum');
-  assert.equal(groupOf('a-gum', 'Литература'), 'a');
-  assert.equal(groupOf('b-tech', 'Обществознание'), 'tech');
-  assert.equal(findSubject('a-se', 'мат').subject, 'Математика');
-  assert.equal(findSubject('a-se', 'вис').subject, 'Вероятность и статистика');
-  assert.equal(findSubject('a-se', 'общ').subject, 'Обществознание');
-  assert.equal(findSubject('a-se', 'общ геог').subject, 'Общественная география');
-  assert.equal(findSubject('b-gum', 'введ лит').subject, 'Введение в литературоведение');
-  assert.equal(findSubject('a-en', 'англ').subject, 'Английский язык');
-  assert.equal(findSubject('b-en', 'реш').subject, 'Решение уравнений');
+  assert.equal(groupOf('a-gum', 'стилистика'), 'gum');
+  assert.equal(groupOf('a-gum', 'литература'), 'a');
+  assert.equal(groupOf('b-tech', 'обществознание'), 'tech');
+  assert.equal(findSubject('a-se', 'мат').subject, 'математика');
+  assert.equal(findSubject('a-se', 'вис').subject, 'вероятность и статистика');
+  assert.equal(findSubject('a-se', 'общ').subject, 'обществознание');
+  assert.equal(findSubject('a-se', 'общ геог').subject, 'общественная география');
+  assert.equal(findSubject('b-gum', 'введ лит').subject, 'введение в литературоведение');
+  assert.equal(findSubject('a-en', 'англ').subject, 'английский язык');
+  assert.equal(findSubject('b-en', 'реш').subject, 'решение уравнений');
   // ср 14.10 10:00 — информатика у тех: ближайшая в пятницу
-  assert.equal(nextLessonDate('a-tech', 'Информатика', at('2026-10-14', 10)).toISOString().slice(0, 10), '2026-10-16');
-  assert.equal(validateNote({ cls: 'gum', subject: 'Химия', text: 'a' }), 'Сначала выбери класс');
-  assert.equal(validateNote({ cls: 'a-se', subject: 'Стилистика', text: 'a' }), 'Нет такого предмета в расписании');
+  assert.equal(nextLessonDate('a-tech', 'информатика', at('2026-10-14', 10)).toISOString().slice(0, 10), '2026-10-16');
+  assert.equal(validateNote({ cls: 'gum', subject: 'химия', text: 'a' }), 'сначала выбери класс');
+  assert.equal(validateNote({ cls: 'a-se', subject: 'стилистика', text: 'a' }), 'нет такого предмета в расписании');
 });
 
 test('бот: сначала выбор класса, потом уроки', async () => {
@@ -123,7 +123,7 @@ test('бот: сначала выбор класса, потом уроки', as
   const now = at('2026-10-14', 9, 45);
 
   const start = await replyTo({ text: '/start', chat }, now, undefined, prefs);
-  assert.match(start.text, /синюю кнопку <b>«Расписание»<\/b>/);
+  assert.match(start.text, /синюю кнопку <b>«расписание»<\/b>/);
   assert.equal(start.reply_markup.inline_keyboard[0][0].web_app.url, 'https://app8734400455.tgcloud.ai/');
   const inGroup = await replyTo({ text: '/start', chat: { id: -5, type: 'supergroup' } }, now, undefined, prefs);
   assert.match(inGroup.text, /в личке/);
@@ -135,7 +135,7 @@ test('бот: сначала выбор класса, потом уроки', as
   assert.equal(picker.reply_markup.inline_keyboard[1][0].text, '10б сэ');
 
   const blocked = await replyTo({ text: BUTTONS.today, chat }, now, undefined, prefs);
-  assert.match(blocked.text, /Сначала выбери/);
+  assert.match(blocked.text, /сначала выбери/);
 
   const chosen = await viewFor('c:b-en', chat.id, now, undefined, prefs);
   assert.equal(chosen.chosen, 'b-en');
@@ -143,11 +143,11 @@ test('бот: сначала выбор класса, потом уроки', as
   assert.equal(await prefs.get(42), 'b-en');
 
   const todayMsg = await replyTo({ text: '/today', chat }, now, undefined, prefs);
-  assert.match(todayMsg.text, /Решение уравнений/);
+  assert.match(todayMsg.text, /решение уравнений/);
   const next = todayMsg.reply_markup.inline_keyboard[0][1].callback_data;
   assert.equal(next, 'd:b-en:2026-10-15');
   const thu = await viewFor(next, chat.id, now, undefined, prefs);
-  assert.match(thu.view.text, /Биохимия/);
+  assert.match(thu.view.text, /биохимия/);
 
   // пятница → «вперёд» ведёт в понедельник
   const fri = await viewFor('d:b-en:2026-10-16', chat.id, now, undefined, prefs);
@@ -155,12 +155,13 @@ test('бот: сначала выбор класса, потом уроки', as
 
   assert.equal(await viewFor('d:gum:2026-10-16', chat.id, now, undefined, prefs), null);
   assert.equal(await viewFor('c:gum', chat.id, now, undefined, prefs), null);
-  assert.equal(actionFor('🔔 Звонки'), 'bells');
-  assert.match((await replyTo({ text: '/bells', chat }, now, undefined, prefs)).text, /Звонки/);
+  assert.equal(actionFor('звонки'), 'bells');
+  assert.equal(actionFor('🔔 Звонки'), 'bells'); // старая клавиатура с эмодзи
+  assert.match((await replyTo({ text: '/bells', chat }, now, undefined, prefs)).text, /звонки/);
   assert.equal(await replyTo({ text: 'привет', chat: { id: 1, type: 'group' } }, now, undefined, prefs), null);
 });
 
-test('бот: ДЗ по профильному уроку видит вся группа, по общему — весь класс', async () => {
+test('бот: дз по профильному уроку видит вся группа, по общему — весь класс', async () => {
   const prefs = memoryPrefs();
   await prefs.set(7, 'a-gum');
   await prefs.set(8, 'b-gum');
@@ -171,13 +172,13 @@ test('бот: ДЗ по профильному уроку видит вся гр
     upcoming: async (groups) => saved.filter((n) => groups.includes(n.cls)),
     add: async (n) => saved.push({ id: saved.length + 1, ...n }),
   };
-  const msg = (chat, text) => ({ text, chat: { id: chat, type: 'private' }, from: { id: 5, first_name: 'Аня' } });
+  const msg = (chat, text) => ({ text, chat: { id: chat, type: 'private' }, from: { id: 5, first_name: 'аня' } });
   const now = at('2026-10-14', 10);
 
   const res = await replyTo(msg(7, '/dz стил: выучить термины'), now, store, prefs);
-  assert.match(res.text, /Стилистика.*Чт, 15 октября.*Видит вся группа «гум»/s);
+  assert.match(res.text, /стилистика.*чт, 15 октября.*видит вся группа «гум»/s);
   assert.deepEqual(saved[0], {
-    id: 1, cls: 'gum', subject: 'Стилистика', due: '2026-10-15', text: 'выучить термины', private: false, authorId: 5, authorName: 'Аня',
+    id: 1, cls: 'gum', subject: 'стилистика', due: '2026-10-15', text: 'выучить термины', private: false, authorId: 5, authorName: 'аня',
   });
   await replyTo(msg(7, '/dz лит: читать главу 3'), now, store, prefs); // литература у 10а — общая
   assert.equal(saved[1].cls, 'a');
@@ -186,10 +187,10 @@ test('бот: ДЗ по профильному уроку видит вся гр
   assert.match(await text(8), /выучить термины/); // 10б гум — та же профильная группа
   assert.ok(!(await text(8)).includes('главу 3')); // а литература у 10б своя
   assert.ok(!(await text(9)).includes('выучить термины'));
-  assert.match((await replyTo(msg(7, '/dz биохим: x'), now, store, prefs)).text, /Не понял, какой предмет/);
+  assert.match((await replyTo(msg(7, '/dz биохим: x'), now, store, prefs)).text, /не понял, какой предмет/);
 });
 
-test('бот: /my — личное ДЗ, видит только автор и только в личке', async () => {
+test('бот: /my — личное дз, видит только автор и только в личке', async () => {
   const prefs = memoryPrefs();
   await prefs.set(7, 'a-gum');
   await prefs.set(8, 'b-gum');
@@ -201,19 +202,19 @@ test('бот: /my — личное ДЗ, видит только автор и �
     upcoming: async (groups, from, viewer) => saved.filter((n) => groups.includes(n.cls) && visible(n, viewer)),
     add: async (n) => saved.push({ id: saved.length + 1, ...n }),
   };
-  const msg = (chat, text, type = 'private') => ({ text, chat: { id: chat, type }, from: { id: chat > 0 ? chat : 7, first_name: 'Аня' } });
+  const msg = (chat, text, type = 'private') => ({ text, chat: { id: chat, type }, from: { id: chat > 0 ? chat : 7, first_name: 'аня' } });
   const now = at('2026-10-14', 10);
 
   const res = await replyTo(msg(7, '/my стил: повторить термины'), now, store, prefs);
-  assert.match(res.text, /личное ДЗ.*Стилистика.*Видишь только ты/s);
+  assert.match(res.text, /личное дз.*стилистика.*видишь только ты/s);
   assert.equal(saved[0].private, true);
   await replyTo(msg(7, '/dz стил: эссе'), now, store, prefs);
   assert.equal(saved[1].private, false);
-  assert.match((await replyTo(msg(7, '/dz стил: эссе'), now, store, prefs)).text, /Видит вся группа «гум» — из 10а и 10б/);
+  assert.match((await replyTo(msg(7, '/dz стил: эссе'), now, store, prefs)).text, /видит вся группа «гум» — из 10а и 10б/);
 
   const mine = (await replyTo(msg(7, '/dz'), now, store, prefs)).text;
-  assert.match(mine, /🔒 повторить термины/);
-  assert.match(mine, /эссе <i>— Аня<\/i>/);
+  assert.match(mine, /повторить термины/);
+  assert.match(mine, /эссе <i>— аня<\/i>/);
   const other = (await replyTo(msg(8, '/dz'), now, store, prefs)).text;
   assert.ok(!other.includes('повторить термины'));
   assert.match(other, /эссе/);
@@ -225,7 +226,7 @@ test('бот: /my — личное ДЗ, видит только автор и �
 
   // и в расписании дня у урока — тоже только у автора
   const thu = await viewFor('d:a-gum:2026-10-15', 7, now, store, prefs);
-  assert.match(thu.view.text, /🔒 повторить термины/);
+  assert.match(thu.view.text, /повторить термины/);
   const thuOther = await viewFor('d:b-gum:2026-10-15', 8, now, store, prefs);
   assert.ok(!thuOther.view.text.includes('повторить термины'));
 });

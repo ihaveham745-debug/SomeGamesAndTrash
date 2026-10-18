@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <title>Расписание</title>
+  <title>расписание</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="style.css">
   <script type="module" src="app.js"></script>
@@ -13,20 +13,20 @@
   <div class="wallpaper" aria-hidden="true"></div>
 
   <header class="titlebar">
-    <h1>Расписание</h1>
-    <button class="class-btn glass press" id="class-btn" type="button" aria-label="Сменить класс">
-      <span id="class-label">Выбрать класс</span>
+    <h1>расписание</h1>
+    <button class="class-btn glass press" id="class-btn" type="button" aria-label="сменить класс">
+      <span id="class-label">выбрать класс</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg>
     </button>
   </header>
 
-  <section class="panel glass blur" aria-label="Неделя">
+  <section class="panel glass blur" aria-label="неделя">
     <div class="weeknav">
-      <button class="arrow press" id="prev-week" type="button" aria-label="Предыдущая неделя">
+      <button class="arrow press" id="prev-week" type="button" aria-label="предыдущая неделя">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg>
       </button>
       <b id="week-range"></b>
-      <button class="arrow press" id="next-week" type="button" aria-label="Следующая неделя">
+      <button class="arrow press" id="next-week" type="button" aria-label="следующая неделя">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg>
       </button>
     </div>
@@ -38,28 +38,28 @@
 
   <main id="content" aria-live="polite"></main>
 
-  <nav class="dock" aria-label="Вид расписания">
+  <nav class="dock" aria-label="вид расписания">
     <div class="tabs glass blur" role="tablist">
       <span class="lens" id="tab-lens" aria-hidden="true"></span>
       <button class="tab press" role="tab" type="button" data-view="day">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><rect class="fill" x="7.5" y="13" width="4" height="4" rx="1"/></svg>
-        <span>День</span>
+        <span>день</span>
       </button>
       <button class="tab press" role="tab" type="button" data-view="week">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6.5h11M9 12h11M9 17.5h11"/><circle class="fill" cx="4.75" cy="6.5" r="1.4"/><circle class="fill" cx="4.75" cy="12" r="1.4"/><circle class="fill" cx="4.75" cy="17.5" r="1.4"/></svg>
-        <span>Неделя</span>
+        <span>неделя</span>
       </button>
       <button class="tab press" role="tab" type="button" data-view="tasks">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3.5" width="14" height="17" rx="3"/><path d="M9 3.5V2.5h6v1M8.5 10l1.6 1.6L13 8.7M8.5 15.5h7"/></svg>
-        <span>Задания</span>
+        <span>задания</span>
       </button>
     </div>
-    <button class="today glass blur press" id="to-today" type="button" aria-label="Сегодня">
+    <button class="today glass blur press" id="to-today" type="button" aria-label="сегодня">
       <span class="today-dow" id="today-dow"></span>
       <span class="today-num" id="today-num"></span>
     </button>
   </nav>
 
-  <noscript><p class="empty">Для расписания нужен JavaScript.</p></noscript>
+  <noscript><p class="empty">для расписания нужен JavaScript.</p></noscript>
 </body>
 </html>

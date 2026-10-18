@@ -34,12 +34,12 @@ export function memoryPrefs() {
 
 // Тексты кнопок не меняй: по ним узнаём нажатия, а у людей уже стоит эта клавиатура.
 export const BUTTONS = {
-  today: '📅 Сегодня',
-  tomorrow: '➡️ Завтра',
-  week: '🗓 Неделя',
-  bells: '🔔 Звонки',
-  dz: '📝 Задания',
-  class: '🏫 Класс',
+  today: 'сегодня',
+  tomorrow: 'завтра',
+  week: 'неделя',
+  bells: 'звонки',
+  dz: 'задания',
+  class: 'класс',
 };
 
 export const KEYBOARD = {
@@ -50,80 +50,80 @@ export const KEYBOARD = {
   ],
   resize_keyboard: true,
   is_persistent: true,
-  input_field_placeholder: 'Какие уроки показать?',
+  input_field_placeholder: 'какие уроки показать?',
 };
 
 export const COMMANDS = [
-  { command: 'today', description: '📅 Уроки на сегодня' },
-  { command: 'tomorrow', description: '➡️ Уроки на завтра' },
-  { command: 'week', description: '🗓 Расписание на неделю' },
-  { command: 'bells', description: '🔔 Расписание звонков' },
-  { command: 'dz', description: '📝 Домашние задания (или /dz мат: текст)' },
-  { command: 'note', description: '🗒 Заметка к предмету: /note хим: текст' },
-  { command: 'my', description: '🔒 Личное ДЗ, видно только тебе: /my мат: текст' },
-  { command: 'class', description: '🏫 Выбрать класс и профиль' },
-  { command: 'help', description: '💬 Что умеет бот' },
+  { command: 'today', description: 'уроки на сегодня' },
+  { command: 'tomorrow', description: 'уроки на завтра' },
+  { command: 'week', description: 'расписание на неделю' },
+  { command: 'bells', description: 'расписание звонков' },
+  { command: 'dz', description: 'домашние задания (или /dz мат: текст)' },
+  { command: 'note', description: 'заметка к предмету: /note хим: текст' },
+  { command: 'my', description: 'личное дз, видно только тебе: /my мат: текст' },
+  { command: 'class', description: 'выбрать класс и профиль' },
+  { command: 'help', description: 'что умеет бот' },
 ];
 
 // Профиль бота: DESCRIPTION видно в пустом чате до /start, SHORT_DESCRIPTION — в профиле.
 export const DESCRIPTION = [
-  `📚 Расписание уроков ${TITLE}`,
+  `расписание уроков ${TITLE}`,
   '',
-  '👉 Нажми «Старт», а потом синюю кнопку «Расписание» слева внизу — там твои уроки.',
+  'нажми «старт», а потом синюю кнопку «расписание» слева внизу — там твои уроки.',
   '',
   '• 10а и 10б, профили сэ, тех, ен, гум — выбери свои',
   '• уроки на сегодня и завтра — со временем и кабинетом',
   '• расписание на неделю, звонки и домашние задания',
 ].join('\n');
 
-export const SHORT_DESCRIPTION = `📅 Уроки 10а и 10б: сегодня, завтра, неделя, звонки и ДЗ`;
+export const SHORT_DESCRIPTION = `уроки 10а и 10б: сегодня, завтра, неделя, звонки и дз`;
 
 export { MINI_APP_URL };
 
 // Кнопка слева от поля ввода в личке с ботом — открывает Mini App.
-export const MENU_BUTTON = { type: 'web_app', text: 'Расписание', web_app: { url: MINI_APP_URL } };
+export const MENU_BUTTON = { type: 'web_app', text: 'расписание', web_app: { url: MINI_APP_URL } };
 
 const HELP_TEXT = [
-  `👋 <b>Привет! Я бот расписания ${TITLE}</b>`,
+  `<b>привет! я бот расписания ${TITLE}</b>`,
   '',
-  'Подскажу, какие сегодня уроки, во сколько и в каком кабинете.',
+  'подскажу, какие сегодня уроки, во сколько и в каком кабинете.',
   '',
-  '📅 /today — уроки на сегодня',
-  '➡️ /tomorrow — на завтра',
-  '🗓 /week — вся неделя',
-  '🔔 /bells — звонки',
-  '📝 /dz — домашние задания и заметки класса',
-  '🏫 /class — сменить класс',
+  '/today — уроки на сегодня',
+  '/tomorrow — на завтра',
+  '/week — вся неделя',
+  '/bells — звонки',
+  '/dz — домашние задания и заметки класса',
+  '/class — сменить класс',
   '',
-  'Записать ДЗ к ближайшему уроку: <code>/dz мат: №5–10</code>',
-  'Заметка к предмету: <code>/note хим: формулы на стр. 12</code>',
-  'Личное ДЗ (видно только тебе): <code>/my мат: решить ещё №7</code>',
+  'записать дз к ближайшему уроку: <code>/dz мат: №5–10</code>',
+  'заметка к предмету: <code>/note хим: формулы на стр. 12</code>',
+  'личное дз (видно только тебе): <code>/my мат: решить ещё №7</code>',
   '',
-  'Стрелки ◀️ ▶️ под расписанием листают дни и недели прямо в сообщении.',
-  'А кнопка <b>«Расписание»</b> слева от поля ввода открывает приложение.',
+  'стрелки ‹ › под расписанием листают дни и недели прямо в сообщении.',
+  'а кнопка <b>«расписание»</b> слева от поля ввода открывает приложение.',
   '',
-  '<i>Время — якутское.</i>',
+  '<i>время — якутское.</i>',
 ].join('\n');
 
 // Первое сообщение (/start): главное — показать синюю кнопку «Расписание» (MENU_BUTTON),
 // иначе не найдут. Под сообщением — такая же кнопка, открывающая приложение.
 const WELCOME_TEXT = [
-  '👋 <b>Привет!</b>',
+  '<b>привет!</b>',
   '',
-  '👇 Нажми синюю кнопку <b>«Расписание»</b> слева внизу, рядом с полем для сообщения, —',
-  'там все твои уроки. Или кнопку под этим сообщением.',
+  'нажми синюю кнопку <b>«расписание»</b> слева внизу, рядом с полем для сообщения, —',
+  'там все твои уроки. или кнопку под этим сообщением.',
   '',
-  'В первый раз выбери свой класс (10а или 10б) и профиль — дальше приложение запомнит.',
+  'в первый раз выбери свой класс (10а или 10б) и профиль — дальше приложение запомнит.',
   '',
-  '<i>Можно и прямо в чате: /today — уроки на сегодня, /help — все команды.</i>',
+  '<i>можно и прямо в чате: /today — уроки на сегодня, /help — все команды.</i>',
 ].join('\n');
 
 const WELCOME_GROUP_TEXT = [
-  `👋 <b>Привет! Я бот расписания ${TITLE}</b>`,
+  `<b>привет! я бот расписания ${TITLE}</b>`,
   '',
-  'Удобнее всего — в личке со мной: открой мой профиль, нажми «Старт», а потом синюю кнопку <b>«Расписание»</b> слева внизу.',
+  'удобнее всего — в личке со мной: открой мой профиль, нажми «старт», а потом синюю кнопку <b>«расписание»</b> слева внизу.',
   '',
-  'А здесь: /class — выбрать класс, /today — уроки на сегодня, /help — все команды.',
+  'а здесь: /class — выбрать класс, /today — уроки на сегодня, /help — все команды.',
 ].join('\n');
 
 /** Кнопки web_app работают только в личке, в группе Telegram их не примет. */
@@ -131,7 +131,7 @@ function welcome(message) {
   if (message.chat?.type !== 'private') return { text: WELCOME_GROUP_TEXT };
   return {
     text: WELCOME_TEXT,
-    reply_markup: { inline_keyboard: [[{ text: '📅 Открыть расписание', web_app: { url: MINI_APP_URL } }]] },
+    reply_markup: { inline_keyboard: [[{ text: 'открыть расписание', web_app: { url: MINI_APP_URL } }]] },
   };
 }
 
@@ -154,15 +154,15 @@ function shortDate(date) {
 export function classKeyboard(current = null) {
   const rows = {};
   for (const [id, c] of Object.entries(CLASSES)) {
-    (rows[c.gradeKey] ??= []).push({ text: `${id === current ? '✅' : ''}${c.grade} ${c.short}`, callback_data: `c:${id}` });
+    (rows[c.gradeKey] ??= []).push({ text: `${id === current ? '• ' : ''}${c.grade} ${c.short}`, callback_data: `c:${id}` });
   }
   return { inline_keyboard: Object.values(rows) };
 }
 
 const PROFILE_HELP = Object.values(PROFILES).map((p) => `<b>${p.short}</b> — ${p.name}`).join('\n');
 
-function classPicker(cls, intro = '🏫 <b>Выбери свой класс и профиль</b>') {
-  const now = cls ? `\n\nСейчас: <b>${escapeHtml(classLabel(cls))}</b>` : '';
+function classPicker(cls, intro = '<b>выбери свой класс и профиль</b>') {
+  const now = cls ? `\n\nсейчас: <b>${escapeHtml(classLabel(cls))}</b>` : '';
   return { text: `${intro}\n\n${PROFILE_HELP}${now}`, reply_markup: classKeyboard(cls) };
 }
 
@@ -172,8 +172,8 @@ function dayKeyboard(cls, date, nowMs) {
   const isToday = date.getTime() === today(nowMs).getTime();
   return {
     inline_keyboard: [
-      [button(`◀️ ${shortDate(prev)}`, 'd', cls, prev), button(`${shortDate(next)} ▶️`, 'd', cls, next)],
-      [button(isToday ? '🔄 Обновить' : '📅 Сегодня', 'd', cls, TODAY), button('🗓 Вся неделя', 'w', cls, date)],
+      [button(`‹ ${shortDate(prev)}`, 'd', cls, prev), button(`${shortDate(next)} ›`, 'd', cls, next)],
+      [button(isToday ? 'обновить' : 'сегодня', 'd', cls, TODAY), button('вся неделя', 'w', cls, date)],
     ],
   };
 }
@@ -191,9 +191,9 @@ function weekKeyboard(cls, date, nowMs) {
     inline_keyboard: [
       days,
       [
-        button('◀️', 'w', cls, addDays(monday, -7)),
-        button(isCurrent ? '🔄 Обновить' : '🗓 Эта неделя', 'w', cls, TODAY),
-        button('▶️', 'w', cls, addDays(monday, 7)),
+        button('‹', 'w', cls, addDays(monday, -7)),
+        button(isCurrent ? 'обновить' : 'эта неделя', 'w', cls, TODAY),
+        button('›', 'w', cls, addDays(monday, 7)),
       ],
     ],
   };
@@ -216,9 +216,9 @@ async function weekView(cls, date, nowMs, store, viewer) {
 // --- Домашние задания и заметки ---
 
 const USAGE = {
-  hw: 'Записать ДЗ: <code>/dz предмет: что задали</code>\nНапример: <code>/dz мат: №5–10, стр. 42</code>',
-  note: 'Заметка: <code>/note предмет: текст</code>\nНапример: <code>/note хим: формулы на стр. 12</code>',
-  my: 'Личное ДЗ (видно только тебе): <code>/my предмет: текст</code>\nНапример: <code>/my мат: решить ещё №7</code>',
+  hw: 'записать дз: <code>/dz предмет: что задали</code>\nнапример: <code>/dz мат: №5–10, стр. 42</code>',
+  note: 'заметка: <code>/note предмет: текст</code>\nнапример: <code>/note хим: формулы на стр. 12</code>',
+  my: 'личное дз (видно только тебе): <code>/my предмет: текст</code>\nнапример: <code>/my мат: решить ещё №7</code>',
 };
 
 function authorName(user) {
@@ -227,16 +227,16 @@ function authorName(user) {
 }
 
 function noteLine(n) {
-  if (n.private) return `🔒 ${escapeHtml(n.text)}`;
+  if (n.private) return `${escapeHtml(n.text)} <i>— только ты</i>`;
   const author = n.authorName ? ` <i>— ${escapeHtml(n.authorName)}</i>` : '';
   return `${escapeHtml(n.text)}${author}`;
 }
 
-/** Кто увидит запись: '🔒 только ты', 'весь 10а', 'вся группа гум (из 10а и 10б)'. */
+/** Кто увидит запись: 'только ты', 'весь 10а', 'вся группа гум (из 10а и 10б)'. */
 function audience(group, isPrivate) {
-  if (isPrivate) return '🔒 Видишь только ты.';
-  if (group === 'a' || group === 'b') return `👥 Видит весь ${groupLabel(group)}.`;
-  return `👥 Видит вся группа «${groupLabel(group)}» — из 10а и 10б.`;
+  if (isPrivate) return 'видишь только ты.';
+  if (group === 'a' || group === 'b') return `видит весь ${groupLabel(group)}.`;
+  return `видит вся группа «${groupLabel(group)}» — из 10а и 10б.`;
 }
 
 /** Список: задания с сегодняшнего дня по датам, потом заметки по предметам. */
@@ -245,8 +245,8 @@ async function homeworkList(cls, nowMs, store, viewer) {
   const tasks = all.filter((n) => n.due).sort((a, b) => a.due.localeCompare(b.due) || a.id - b.id);
   const notes = all.filter((n) => !n.due).sort((a, b) => a.subject.localeCompare(b.subject, 'ru') || a.id - b.id);
 
-  const parts = [`📝 <b>Домашние задания</b> · ${escapeHtml(classLabel(cls))}`];
-  if (tasks.length === 0) parts.push('<i>Пока ничего не задано 🎉</i>');
+  const parts = [`<b>домашние задания</b> · ${escapeHtml(classLabel(cls))}`];
+  if (tasks.length === 0) parts.push('<i>пока ничего не задано </i>');
   let lastDue = null;
   for (const n of tasks) {
     if (n.due !== lastDue) {
@@ -257,7 +257,7 @@ async function homeworkList(cls, nowMs, store, viewer) {
     parts.push(`• <b>${escapeHtml(n.subject)}</b>: ${noteLine(n)}`);
   }
   if (notes.length) {
-    parts.push('\n🗒 <b>Заметки</b>');
+    parts.push('\n<b>заметки</b>');
     for (const n of notes) parts.push(`• <b>${escapeHtml(n.subject)}</b>: ${noteLine(n)}`);
   }
   // Telegram не принимает сообщения длиннее 4096 символов: обрезаем по целым строкам.
@@ -266,7 +266,7 @@ async function homeworkList(cls, nowMs, store, viewer) {
   let length = tail.join('\n').length + 80;
   for (const line of parts) {
     if (length + line.length + 1 > 4000) {
-      kept.push('…', '<i>Всё целиком — в приложении «Расписание».</i>');
+      kept.push('…', '<i>всё целиком — в приложении «расписание».</i>');
       break;
     }
     kept.push(line);
@@ -281,27 +281,27 @@ async function homeworkList(cls, nowMs, store, viewer) {
  */
 async function homeworkCommand(kind, cls, args, message, nowMs, store) {
   const viewer = viewerOf(message.chat?.id);
-  if (kind === 'my' && !viewer) return { text: '🔒 Личные записи — только в личке со мной.' };
+  if (kind === 'my' && !viewer) return { text: 'личные записи — только в личке со мной.' };
   if (!args) return kind === 'hw' ? homeworkList(cls, nowMs, store, viewer) : { text: USAGE[kind] };
 
   const sep = args.indexOf(':');
-  if (sep < 0) return { text: `🤔 Не хватает двоеточия после предмета.\n\n${USAGE[kind]}` };
+  if (sep < 0) return { text: `не хватает двоеточия после предмета.\n\n${USAGE[kind]}` };
   const query = args.slice(0, sep).trim();
   const found = findSubject(cls, query);
   if (!found.subject) {
     const list = found.candidates.map((s) => `• ${escapeHtml(s)}`).join('\n');
-    return { text: `🤔 Не понял, какой предмет: «${escapeHtml(query)}». Есть такие:\n${list}\n\n${USAGE[kind]}` };
+    return { text: `не понял, какой предмет: «${escapeHtml(query)}». есть такие:\n${list}\n\n${USAGE[kind]}` };
   }
 
   const text = cleanText(args.slice(sep + 1));
   let due = null;
   if (kind !== 'note') {
     const date = nextLessonDate(cls, found.subject, nowMs);
-    if (!date) return { text: `🤔 Ближайших уроков по предмету «${escapeHtml(found.subject)}» в расписании нет.` };
+    if (!date) return { text: `ближайших уроков по предмету «${escapeHtml(found.subject)}» в расписании нет.` };
     due = isoDate(date);
   }
   const error = validateNote({ cls, subject: found.subject, due, text });
-  if (error) return { text: `🤔 ${error === 'Пустой текст' ? 'А что задали? Текст после двоеточия пустой.' : escapeHtml(error)}\n\n${USAGE[kind]}` };
+  if (error) return { text: `${error === 'пустой текст' ? 'а что задали? текст после двоеточия пустой.' : escapeHtml(error)}\n\n${USAGE[kind]}` };
 
   const group = groupOf(cls, found.subject);
   const isPrivate = kind === 'my';
@@ -312,14 +312,14 @@ async function homeworkCommand(kind, cls, args, message, nowMs, store) {
     });
   } catch (err) {
     console.error('store.add failed', err);
-    return { text: '😕 Не получилось сохранить, попробуй ещё раз чуть позже.' };
+    return { text: 'не получилось сохранить, попробуй ещё раз чуть позже.' };
   }
   const who = audience(group, isPrivate);
-  if (kind === 'note') return { text: `✅ Заметка по предмету <b>${escapeHtml(found.subject)}</b> сохранена.\n${who}\nВсе записи — /dz` };
+  if (kind === 'note') return { text: `заметка по предмету <b>${escapeHtml(found.subject)}</b> сохранена.\n${who}\nвсе записи — /dz` };
   const date = parseDate(due);
   return {
-    text: `✅ Записал ${isPrivate ? 'личное ' : ''}ДЗ по предмету <b>${escapeHtml(found.subject)}</b> к уроку ${DAY_SHORT[weekday(date) - 1]}, ${dayMonth(date)}.\n${who}\nВсе задания — /dz`,
-    reply_markup: { inline_keyboard: [[button(`📅 ${shortDate(date)}`, 'd', cls, date)]] },
+    text: `записал ${isPrivate ? 'личное ' : ''}дз по предмету <b>${escapeHtml(found.subject)}</b> к уроку ${DAY_SHORT[weekday(date) - 1]}, ${dayMonth(date)}.\n${who}\nвсе задания — /dz`,
+    reply_markup: { inline_keyboard: [[button(`${shortDate(date)}`, 'd', cls, date)]] },
   };
 }
 
@@ -343,8 +343,10 @@ const COMMAND = /^\/([a-z_]+)(?:@(\w+))?(?:\s|$)/i;
 /** Какое действие просят: '/today', '/today@bot_name' или текст кнопки. */
 export function actionFor(text) {
   if (!text) return null;
+  // У кого-то ещё старая клавиатура — «📅 Сегодня»: сравниваем без эмодзи и регистра.
+  const plain = text.replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '').trim().toLowerCase();
   for (const [action, label] of Object.entries(BUTTONS)) {
-    if (text.trim() === label) return action;
+    if (plain === label) return action;
   }
   const command = COMMAND.exec(text.trim())?.[1].toLowerCase();
   return command && command in ACTIONS ? command : null;
@@ -368,12 +370,12 @@ function commandArgs(text) {
 export async function replyTo(message, nowMs = Date.now(), store = NO_STORE, prefs = memoryPrefs()) {
   const action = actionFor(message.text);
   if (!action) {
-    if (message.chat?.type === 'private') return { text: 'Не понял 🤔 Жми кнопки внизу или /help', reply_markup: KEYBOARD };
+    if (message.chat?.type === 'private') return { text: 'не понял, жми кнопки внизу или /help', reply_markup: KEYBOARD };
     return null;
   }
   const saved = await prefs.get(message.chat?.id);
   const cls = isClass(saved) ? saved : null;
-  if (!cls && NEEDS_CLASS.has(action)) return classPicker(null, '🏫 Сначала выбери свой класс и профиль:');
+  if (!cls && NEEDS_CLASS.has(action)) return classPicker(null, 'сначала выбери свой класс и профиль:');
   return ACTIONS[action]({ now: nowMs, store, message, args: commandArgs(message.text), cls });
 }
 
@@ -400,5 +402,5 @@ export async function viewFor(data, chatId, nowMs = Date.now(), store = NO_STORE
 
 /** Сообщение после выбора класса — с обычной клавиатурой внизу. */
 export function chosenText(cls) {
-  return `✅ <b>${escapeHtml(classLabel(cls))}</b>: ${escapeHtml(CLASSES[cls].grade)}, ${escapeHtml(CLASSES[cls].profile)} профиль.\nСменить — /class. Что умею — /help`;
+  return `<b>${escapeHtml(classLabel(cls))}</b>: ${escapeHtml(CLASSES[cls].grade)}, ${escapeHtml(CLASSES[cls].profile)} профиль.\nсменить — /class. что умею — /help`;
 }

@@ -1,4 +1,4 @@
-// handlers/callback_query — нажатия на кнопки под сообщениями: выбор класса, ◀️ ▶️, «Вся неделя».
+// handlers/callback_query — нажатия на кнопки под сообщениями: выбор класса, ‹ ›, «Вся неделя».
 // Новое сообщение не шлём — меняем текст того, под которым нажали
 // (кроме выбора класса: тогда ещё присылаем обычную клавиатуру внизу).
 
@@ -23,14 +23,14 @@ export default async function (query, ctx) {
       });
     } catch (err) {
       if (err instanceof BotApiError && /not modified/i.test(err.description ?? '')) {
-        notice = 'Уже актуально 👌';
+        notice = 'уже актуально';
       } else {
         console.error('editMessageText failed', err);
-        notice = 'Не получилось обновить 😕 Запроси расписание заново';
+        notice = 'не получилось обновить, запроси расписание заново';
       }
     }
     if (result.chosen) {
-      notice = 'Класс выбран ✅';
+      notice = 'класс выбран';
       await api.sendMessage({
         chat_id: chat.id,
         ...(query.message.is_topic_message && { message_thread_id: query.message.message_thread_id }),

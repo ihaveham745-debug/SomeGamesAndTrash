@@ -104,8 +104,9 @@ function esc(text) {
     .replace(/"/g, '&quot;');
 }
 
+// Всё строчными (лапслок): названия дней не капитализируем.
 function cap(text) {
-  return text[0].toUpperCase() + text.slice(1);
+  return text;
 }
 
 function same(a, b) {
@@ -114,7 +115,7 @@ function same(a, b) {
 
 function relativeLabel(date) {
   const diff = Math.round((date.getTime() - today().getTime()) / 86400000);
-  return { [-1]: 'Вчера', 0: 'Сегодня', 1: 'Завтра' }[diff];
+  return { [-1]: 'вчера', 0: 'сегодня', 1: 'завтра' }[diff];
 }
 
 function placeHtml(room) {
@@ -123,34 +124,31 @@ function placeHtml(room) {
 
 // --- День ---
 
-function emptyHtml(big, title, text = '') {
-  return `<div class="empty"><div class="big glass">${big}</div><b>${esc(title)}</b>${text ? `<p>${esc(text)}</p>` : ''}</div>`;
+function emptyHtml(title, text = '') {
+  return `<div class="empty"><b>${esc(title)}</b>${text ? `<p>${esc(text)}</p>` : ''}</div>`;
 }
 
-/** Текст «вне года» начинается со значка: '🎓 Учебный год закончился…' → круг со значком и текст. */
 function outOfYearHtml(date) {
-  const text = outOfYear(date);
-  const space = text.indexOf(' ');
-  return emptyHtml(text.slice(0, space), text.slice(space + 1));
+  return emptyHtml(outOfYear(date));
 }
 
 function noClassHtml() {
-  return emptyHtml('🏫', 'Выбери свой класс', 'Нажми «Выбрать класс» вверху — покажу твои уроки');
+  return emptyHtml('выбери свой класс', 'нажми «выбрать класс» вверху — покажу твои уроки');
 }
 
 function statusHtml(status, minutes) {
   if (status.kind === 'done') {
     return `<div class="status glass"><span class="symbol done">${ICON.check}</span><div>
-      <div class="what">На сегодня всё</div><div class="main">Уроки закончились</div></div></div>`;
+      <div class="what">на сегодня всё</div><div class="main">уроки закончились</div></div></div>`;
   }
   const name = status.lesson.subject;
   if (status.kind === 'now') {
     return `<div class="status glass now"><span class="live"><i></i></span><div>
-      <div class="what">Идёт ${status.lesson.n}-й урок · ещё ${duration(status.end - minutes)}</div>
+      <div class="what">идёт ${status.lesson.n}-й урок · ещё ${duration(status.end - minutes)}</div>
       <div class="main">${esc(name)}</div></div></div>`;
   }
   return `<div class="status glass"><span class="symbol next">${ICON.clock}</span><div>
-    <div class="what">${status.first ? 'Первый' : 'Следующий'} урок через ${duration(status.start - minutes)}</div>
+    <div class="what">${status.first ? 'первый' : 'следующий'} урок через ${duration(status.start - minutes)}</div>
     <div class="main">${hhmm(status.start)} · ${esc(name)}</div></div></div>`;
 }
 
@@ -159,7 +157,7 @@ function noteItemHtml(n) {
   const by = n.private ? 'только ты' : n.authorName;
   return `<div class="hw-item${n.private ? ' private' : ''}">
     <div class="hw-body"><div class="hw-text">${esc(n.text)}</div>${by ? `<div class="hw-by">${esc(by)}</div>` : ''}</div>
-    ${mine ? `<button class="hw-del press" type="button" data-del="${n.id}" aria-label="Удалить">${ICON.trash}</button>` : ''}
+    ${mine ? `<button class="hw-del press" type="button" data-del="${n.id}" aria-label="удалить">${ICON.trash}</button>` : ''}
   </div>`;
 }
 
@@ -167,7 +165,7 @@ function lessonHomeworkHtml(p, iso) {
   const items = homeworkFor(state.notes, iso, p.subject);
   if (!items.length && !canWrite) return '';
   const add = canWrite
-    ? `<button class="hw-add press" type="button" data-add="hw" data-subject="${esc(p.subject)}" data-due="${iso}">${ICON.plus}ДЗ</button>`
+    ? `<button class="hw-add press" type="button" data-add="hw" data-subject="${esc(p.subject)}" data-due="${iso}">${ICON.plus}дз</button>`
     : '';
   return `<div class="hw">${items.map(noteItemHtml).join('')}${add}</div>`;
 }
@@ -203,13 +201,13 @@ function dayHtml(date) {
 
   const lessons = lessonsFor(state.cls, date);
   if (lessons.length === 0) {
-    return `<div class="day-head">${title}</div>${emptyHtml('🎉', 'Уроков нет', 'Можно отдыхать')}`;
+    return `<div class="day-head">${title}</div>${emptyHtml('уроков нет', 'можно отдыхать')}`;
   }
 
   const first = bell(lessons[0].n);
   const last = bell(lessons[lessons.length - 1].n);
   const span = first && last ? ` · ${hhmm(first.start)}–${hhmm(last.end)}` : '';
-  const isToday = label === 'Сегодня';
+  const isToday = label === 'сегодня';
   const minutes = minutesNow();
   const status = isToday ? dayStatus(lessons, minutes) : null;
 
@@ -243,15 +241,15 @@ function weekHtml(date) {
     const rows = lessons.map((p) => {
       const time = bell(p.n);
       const type = p.type ? ` <span class="t">${esc(p.type)}</span>` : '';
-      const hw = homeworkFor(state.notes, isoDate(day), p.subject).length ? ' <span class="hw-mark">📝</span>' : '';
+      const hw = homeworkFor(state.notes, isoDate(day), p.subject).length ? ' <span class="hw-mark">· дз</span>' : '';
       return `<li><b>${time ? hhmm(time.start) : `${p.n}.`}</b><span>${esc(p.subject)}${type}${hw}</span><span class="r">${esc(p.room ?? '')}</span></li>`;
     });
     sections.push(`<section class="wday glass${isToday ? ' is-today' : ''}">
       <button class="wday-head" type="button" data-date="${isoDate(day)}">
-        <span class="name">${cap(DAY_NAMES[i])}, ${dayMonth(day)}</span>${isToday ? '<span class="badge">Сегодня</span>' : ''}
+        <span class="name">${cap(DAY_NAMES[i])}, ${dayMonth(day)}</span>${isToday ? '<span class="badge">сегодня</span>' : ''}
         <span class="more">${lessons.length ? lessonsWord(lessons.length) : ''}${ICON.chevron}</span>
       </button>
-      ${rows.length ? `<ul>${rows.join('')}</ul>` : '<p class="none">Уроков нет</p>'}
+      ${rows.length ? `<ul>${rows.join('')}</ul>` : '<p class="none">уроков нет</p>'}
     </section>`);
   }
   return `<div class="week">${sections.join('')}</div>`;
@@ -265,14 +263,14 @@ function tasksHtml() {
   const tasks = state.notes.filter((n) => n.due && n.due >= from).sort((a, b) => a.due.localeCompare(b.due) || a.id - b.id);
   const notes = state.notes.filter((n) => !n.due).sort((a, b) => a.subject.localeCompare(b.subject, 'ru') || a.id - b.id);
 
-  const head = `<div class="day-head"><h2 class="day-title">Задания</h2>
+  const head = `<div class="day-head"><h2 class="day-title">задания</h2>
     <p class="summary">${esc(classLabel(state.cls))} · общие уроки — для всего класса, профильные — для всей группы</p></div>
     ${canWrite ? `<div class="actions">
-      <button class="action glass press" type="button" data-add="hw">${ICON.plus}Задание</button>
-      <button class="action glass press" type="button" data-add="note">${ICON.plus}Заметка</button>
+      <button class="action glass press" type="button" data-add="hw">${ICON.plus}задание</button>
+      <button class="action glass press" type="button" data-add="note">${ICON.plus}заметка</button>
     </div>` : ''}`;
   if (!canWrite) {
-    return head + emptyHtml('📝', 'Открой из Telegram', 'Задания хранятся у бота — их видно в приложении, открытом из чата с ботом');
+    return head + emptyHtml('открой из telegram', 'задания хранятся у бота — их видно в приложении, открытом из чата с ботом');
   }
 
   const byDate = new Map();
@@ -297,10 +295,10 @@ function tasksHtml() {
   </section>`);
 
   return `${head}
-    <h3 class="section">Домашние задания</h3>
-    ${taskCards.length ? `<div class="week">${taskCards.join('')}</div>` : '<p class="muted">Пока ничего не задано 🎉</p>'}
-    <h3 class="section">Заметки по предметам</h3>
-    ${noteCards.length ? `<div class="week">${noteCards.join('')}</div>` : '<p class="muted">Заметок пока нет</p>'}`;
+    <h3 class="section">домашние задания</h3>
+    ${taskCards.length ? `<div class="week">${taskCards.join('')}</div>` : '<p class="muted">пока ничего не задано</p>'}
+    <h3 class="section">заметки по предметам</h3>
+    ${noteCards.length ? `<div class="week">${noteCards.join('')}</div>` : '<p class="muted">заметок пока нет</p>'}`;
 }
 
 // --- Окна (выбор класса и добавление записи) ---
@@ -329,9 +327,9 @@ function openClassPicker() {
       <div class="class-list">${options.join('')}</div>
     </div>`).join('');
   const root = openSheet(`<div class="sheet glass blur">
-    <div class="sheet-title">Твой класс и профиль</div>
+    <div class="sheet-title">твой класс и профиль</div>
     ${sections}
-    ${state.cls ? '<div class="sheet-buttons"><button class="btn press" type="button" data-close>Отмена</button></div>' : ''}
+    ${state.cls ? '<div class="sheet-buttons"><button class="btn press" type="button" data-close>отмена</button></div>' : ''}
   </div>`);
   root.addEventListener('click', (e) => {
     const pick = e.target.closest('[data-pick]');
@@ -347,20 +345,20 @@ function openComposer({ kind, subject = null, due = null }) {
   const fixed = Boolean(subject && due);
   const options = subjectsOf(cls).map((s) => `<option${s === subject ? ' selected' : ''}>${esc(s)}</option>`).join('');
   const root = openSheet(`<form class="sheet glass blur" autocomplete="off">
-    <div class="sheet-title">${kind === 'hw' ? 'Домашнее задание' : 'Заметка к предмету'} · ${esc(classLabel(cls))}</div>
+    <div class="sheet-title">${kind === 'hw' ? 'домашнее задание' : 'заметка к предмету'} · ${esc(classLabel(cls))}</div>
     ${fixed ? `<div class="sheet-subject">${esc(subject)}</div>`
-      : `<select class="field" name="subject"><option value="" disabled${subject ? '' : ' selected'}>Предмет…</option>${options}</select>`}
+      : `<select class="field" name="subject"><option value="" disabled${subject ? '' : ' selected'}>предмет…</option>${options}</select>`}
     <div class="sheet-due"></div>
     <textarea class="field" name="text" rows="4" maxlength="${MAX_NOTE_LENGTH}"
-      placeholder="${kind === 'hw' ? 'Что задали? Например: №5–10, стр. 42' : 'Например: формулы на стр. 12'}"></textarea>
+      placeholder="${kind === 'hw' ? 'что задали? например: №5–10, стр. 42' : 'например: формулы на стр. 12'}"></textarea>
     <label class="private-toggle">
-      <span><b>🔒 Только мне</b><small class="who"></small></span>
+      <span><b>только мне</b><small class="who"></small></span>
       <input type="checkbox" name="private" role="switch">
     </label>
     <div class="sheet-error" role="alert"></div>
     <div class="sheet-buttons">
-      <button class="btn press" type="button" data-close>Отмена</button>
-      <button class="btn primary press" type="submit">Сохранить</button>
+      <button class="btn press" type="button" data-close>отмена</button>
+      <button class="btn primary press" type="submit">сохранить</button>
     </div>
   </form>`);
 
@@ -372,10 +370,10 @@ function openComposer({ kind, subject = null, due = null }) {
     const subj = fixed ? subject : form.subject.value;
     if (!fixed) currentDue = subj ? isoDate(nextLessonDate(cls, subj) ?? today()) : null;
     if (!subj) {
-      dueBox.textContent = 'Запишется к ближайшему уроку по предмету';
+      dueBox.textContent = 'запишется к ближайшему уроку по предмету';
     } else if (currentDue) {
       const d = parseDate(currentDue);
-      dueBox.textContent = `К уроку: ${DAY_NAMES[weekday(d) - 1]}, ${dayMonth(d)}`;
+      dueBox.textContent = `к уроку: ${DAY_NAMES[weekday(d) - 1]}, ${dayMonth(d)}`;
     }
   };
   // Кто увидит запись: общий урок — весь класс, профильный — вся группа из обоих классов.
@@ -383,10 +381,10 @@ function openComposer({ kind, subject = null, due = null }) {
   const updateWho = () => {
     const subj = fixed ? subject : form.subject.value;
     const group = subj ? groupOf(cls, subj) : null;
-    if (form.private.checked) whoBox.textContent = 'Увидишь только ты';
-    else if (!group) whoBox.textContent = 'Выключено — увидят одноклассники';
-    else if (group === 'a' || group === 'b') whoBox.textContent = `Выключено — увидит весь ${groupLabel(group)}`;
-    else whoBox.textContent = `Выключено — увидит группа «${groupLabel(group)}» из 10а и 10б`;
+    if (form.private.checked) whoBox.textContent = 'увидишь только ты';
+    else if (!group) whoBox.textContent = 'выключено — увидят одноклассники';
+    else if (group === 'a' || group === 'b') whoBox.textContent = `выключено — увидит весь ${groupLabel(group)}`;
+    else whoBox.textContent = `выключено — увидит группа «${groupLabel(group)}» из 10а и 10б`;
   };
   updateDue();
   updateWho();
@@ -399,8 +397,8 @@ function openComposer({ kind, subject = null, due = null }) {
     const subj = fixed ? subject : form.subject.value;
     const text = cleanText(form.text.value);
     const error = root.querySelector('.sheet-error');
-    if (!subj) return void (error.textContent = 'Выбери предмет');
-    if (!text) return void (error.textContent = kind === 'hw' ? 'Напиши, что задали' : 'Пустая заметка');
+    if (!subj) return void (error.textContent = 'выбери предмет');
+    if (!text) return void (error.textContent = kind === 'hw' ? 'напиши, что задали' : 'пустая заметка');
     const save = form.querySelector('[type="submit"]');
     save.disabled = true;
     try {
@@ -412,7 +410,7 @@ function openComposer({ kind, subject = null, due = null }) {
       closeSheet();
       render();
     } catch (err) {
-      error.textContent = err?.message || 'Не получилось сохранить';
+      error.textContent = err?.message || 'не получилось сохранить';
       save.disabled = false;
     }
   });
@@ -424,8 +422,8 @@ function closeSheet() {
 
 async function deleteNote(id) {
   const ok = await new Promise((resolve) => {
-    if (tg?.showConfirm && inTelegram) tg.showConfirm('Удалить запись?', resolve);
-    else resolve(window.confirm('Удалить запись?'));
+    if (tg?.showConfirm && inTelegram) tg.showConfirm('удалить запись?', resolve);
+    else resolve(window.confirm('удалить запись?'));
   });
   if (!ok) return;
   try {
@@ -433,7 +431,7 @@ async function deleteNote(id) {
     state.notes = state.notes.filter((n) => n.id !== id);
     render();
   } catch (err) {
-    if (tg?.showAlert) tg.showAlert(err?.message || 'Не получилось удалить');
+    if (tg?.showAlert) tg.showAlert(err?.message || 'не получилось удалить');
   }
 }
 
@@ -456,7 +454,7 @@ function placeHighlights() {
 function renderChrome() {
   const monday = mondayOf(state.date);
   $('week-range').textContent = dateRange(monday, addDays(monday, SCHOOL_DAYS - 1));
-  $('class-label').textContent = state.cls ? classLabel(state.cls) : 'Выбрать класс';
+  $('class-label').textContent = state.cls ? classLabel(state.cls) : 'выбрать класс';
 
   const now = today();
   $('strip').innerHTML = DAY_SHORT.slice(0, SCHOOL_DAYS).map((short, i) => {
@@ -476,7 +474,7 @@ function renderChrome() {
   $('today-dow').textContent = DAY_SHORT[weekday(now) - 1];
   $('today-num').textContent = now.getUTCDate();
   $('to-today').classList.toggle('here', state.view === 'day' && same(state.date, firstDay()));
-  $('to-today').setAttribute('aria-label', `Сегодня, ${dayMonth(now)}`);
+  $('to-today').setAttribute('aria-label', `сегодня, ${dayMonth(now)}`);
 
   placeHighlights();
 }
@@ -588,7 +586,7 @@ function applyScheme() {
   if (tg.isVersionAtLeast('6.9')) tg.setHeaderColor(base);
 }
 
-document.title = 'Расписание 10-х классов';
+document.title = 'расписание 10-х классов';
 
 applyScheme();
 if (inTelegram) {

@@ -10,13 +10,12 @@ import { BELLS, CLASSES, TIMETABLE, UTC_OFFSET_HOURS, YEAR_END, YEAR_START, clas
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const DAY_NAMES = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
-export const DAY_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+export const DAY_SHORT = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 export const SCHOOL_DAYS = 5; // пн–пт
 const MONTHS = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
 ];
-const KEYCAPS = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
 
 export const isClass = (cls) => typeof cls === 'string' && Object.hasOwn(CLASSES, cls);
 
@@ -101,8 +100,9 @@ export function hhmm(minutes) {
   return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
 }
 
+// Всё строчными (лапслок): ничего не капитализируем.
 function capitalize(text) {
-  return text[0].toUpperCase() + text.slice(1);
+  return text;
 }
 
 export function escapeHtml(text) {
@@ -154,14 +154,14 @@ export function roomText(room) {
 
 export function outOfYear(date) {
   if (isoDate(date) < YEAR_START) {
-    return `🏖 Учебный год ещё не начался — уроки с ${dayMonth(parseDate(YEAR_START))}.`;
+    return `учебный год ещё не начался — уроки с ${dayMonth(parseDate(YEAR_START))}.`;
   }
-  return '🎓 Учебный год закончился — расписание пора обновить.';
+  return 'учебный год закончился — расписание пора обновить.';
 }
 
 function relativeDay(date, nowMs) {
   const diff = Math.round((date.getTime() - today(nowMs).getTime()) / DAY_MS);
-  return { [-1]: 'Вчера', 0: 'Сегодня', 1: 'Завтра' }[diff];
+  return { [-1]: 'вчера', 0: 'сегодня', 1: 'завтра' }[diff];
 }
 
 /**
@@ -184,24 +184,24 @@ export function dayStatus(lessons, minutes) {
 function nowLine(status, minutes) {
   if (!status) return null;
   if (status.kind === 'now') {
-    return `🟢 Идёт ${status.lesson.n}-й урок, до ${hhmm(status.end)} — ещё ${duration(status.end - minutes)}`;
+    return `идёт ${status.lesson.n}-й урок, до ${hhmm(status.end)} — ещё ${duration(status.end - minutes)}`;
   }
   if (status.kind === 'next') {
-    const which = status.first ? 'Первый урок' : 'Следующий урок';
-    return `⏳ ${which} в ${hhmm(status.start)} — через ${duration(status.start - minutes)}`;
+    const which = status.first ? 'первый урок' : 'следующий урок';
+    return `${which} в ${hhmm(status.start)} — через ${duration(status.start - minutes)}`;
   }
-  return '✅ На сегодня уроки закончились';
+  return 'на сегодня уроки закончились';
 }
 
 function lessonCard(p, isNow, homework = []) {
-  const head = [KEYCAPS[p.n] ?? `${p.n}.`, BELLS[p.n] && `<b>${BELLS[p.n]}</b>`, isNow && '← сейчас']
+  const head = [`${p.n} урок`, BELLS[p.n] && `<b>${BELLS[p.n]}</b>`, isNow && '← сейчас']
     .filter(Boolean)
     .join(' ');
   const title = `<b>${escapeHtml(p.subject)}</b>` + (p.type ? ` · <i>${escapeHtml(p.type)}</i>` : '');
   const hw = homework.map((n) => (n.private
-    ? `🔒 ${escapeHtml(n.text)}`
-    : `📝 ${escapeHtml(n.text)}${n.authorName ? ` <i>— ${escapeHtml(n.authorName)}</i>` : ''}`));
-  return `<blockquote>${[head, title, ...(p.room ? [`📍 ${escapeHtml(roomText(p.room))}`] : []), ...hw].join('\n')}</blockquote>`;
+    ? `дз: ${escapeHtml(n.text)} <i>— только ты</i>`
+    : `дз: ${escapeHtml(n.text)}${n.authorName ? ` <i>— ${escapeHtml(n.authorName)}</i>` : ''}`));
+  return `<blockquote>${[head, title, ...(p.room ? [`${escapeHtml(roomText(p.room))}`] : []), ...hw].join('\n')}</blockquote>`;
 }
 
 /** «Окно» между уроками: номера уроков, которых нет, → время. */
@@ -209,18 +209,18 @@ function gapLine(fromN, toN) {
   const from = bell(fromN);
   const to = bell(toN);
   const time = from && to ? ` ${hhmm(from.start)}–${hhmm(to.end)}` : '';
-  return `<i>☕ окно${time}</i>`;
+  return `<i>окно${time}</i>`;
 }
 
 /** notes — записи класса из базы; у уроков показываются задания к этой дате. */
 export function formatDay(cls, date, nowMs = Date.now(), notes = []) {
   const label = relativeDay(date, nowMs);
   const name = `${DAY_NAMES[weekday(date) - 1]}, ${dayMonth(date)}`;
-  const header = `📅 <b>${label ? `${label} · ${name}` : capitalize(name)}</b> · ${escapeHtml(classLabel(cls))}`;
+  const header = `<b>${label ? `${label} · ${name}` : capitalize(name)}</b> · ${escapeHtml(classLabel(cls))}`;
   if (!inYear(date)) return `${header}\n\n${outOfYear(date)}`;
 
   const lessons = lessonsFor(cls, date);
-  if (lessons.length === 0) return `${header}\n\nУроков нет — отдыхаем 🎉`;
+  if (lessons.length === 0) return `${header}\n\nуроков нет — отдыхаем `;
 
   const first = bell(lessons[0].n);
   const last = bell(lessons[lessons.length - 1].n);
@@ -228,7 +228,7 @@ export function formatDay(cls, date, nowMs = Date.now(), notes = []) {
   const intro = [header, `<i>${lessonsWord(lessons.length)}${span}</i>`];
 
   const minutes = minutesNow(nowMs);
-  const status = label === 'Сегодня' ? dayStatus(lessons, minutes) : null;
+  const status = label === 'сегодня' ? dayStatus(lessons, minutes) : null;
   const line = nowLine(status, minutes);
   if (line) intro.push('', line);
 
@@ -246,7 +246,7 @@ export function formatDay(cls, date, nowMs = Date.now(), notes = []) {
 export function formatWeek(cls, date, nowMs = Date.now(), notes = []) {
   const monday = mondayOf(date);
   const friday = addDays(monday, SCHOOL_DAYS - 1);
-  const header = `🗓 <b>${dateRange(monday, friday)}</b> · ${escapeHtml(classLabel(cls))}`;
+  const header = `<b>${dateRange(monday, friday)}</b> · ${escapeHtml(classLabel(cls))}`;
   if (!isYearWeek(monday)) return `${header}\n\n${outOfYear(monday)}`;
 
   const todayMs = today(nowMs).getTime();
@@ -254,7 +254,7 @@ export function formatWeek(cls, date, nowMs = Date.now(), notes = []) {
   for (let i = 0; i < SCHOOL_DAYS; i++) {
     const day = addDays(monday, i);
     const lessons = lessonsFor(cls, day);
-    const mark = day.getTime() === todayMs ? ' 👈 сегодня' : '';
+    const mark = day.getTime() === todayMs ? ' — сегодня' : '';
     const head = `<b>${capitalize(DAY_NAMES[i])}, ${dayMonth(day)}</b>${mark}`;
     if (lessons.length === 0) {
       parts.push(`${head}\n<i>уроков нет</i>`);
@@ -265,7 +265,7 @@ export function formatWeek(cls, date, nowMs = Date.now(), notes = []) {
       let line = `${time ? `<b>${hhmm(time.start)}</b>` : `${p.n}.`} ${escapeHtml(p.subject)}`;
       if (p.type) line += ` <i>${escapeHtml(p.type)}</i>`;
       if (p.room) line += ` · ${escapeHtml(p.room)}`;
-      if (notes.some((n) => n.due === isoDate(day) && n.subject === p.subject)) line += ' 📝';
+      if (notes.some((n) => n.due === isoDate(day) && n.subject === p.subject)) line += ' · дз';
       return line;
     });
     parts.push(`${head}\n<blockquote>${lines.join('\n')}</blockquote>`);
@@ -273,7 +273,7 @@ export function formatWeek(cls, date, nowMs = Date.now(), notes = []) {
   return parts.join('\n\n');
 }
 
-/** Звонки: '1. 08:00–08:40' … */
+/** Звонки: '1 урок — 08:00–08:40' … */
 export function formatBells() {
-  return ['🔔 <b>Звонки</b> · I смена', '', ...Object.entries(BELLS).map(([n, t]) => `${KEYCAPS[n] ?? `${n}.`} ${t}`)].join('\n');
+  return ['<b>звонки</b> · первая смена', '', ...Object.entries(BELLS).map(([n, t]) => `${n} урок — ${t}`)].join('\n');
 }

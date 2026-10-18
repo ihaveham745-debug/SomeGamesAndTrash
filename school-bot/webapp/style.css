@@ -281,7 +281,7 @@ svg .fill {
   font-size: 11px;
   font-weight: 600;
   color: var(--label-2);
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.04em;
   transition: color 0.3s;
 }
@@ -866,7 +866,7 @@ main {
 .today-dow {
   font-size: 10px;
   font-weight: 700;
-  text-transform: uppercase;
+  text-transform: none;
   color: #ff3b30;
 }
 
@@ -933,7 +933,7 @@ body[data-view="tasks"] .panel {
 }
 
 .hw-item::before {
-  content: "📝";
+  content: none;
   font-size: 14px;
   line-height: 1.4;
 }
@@ -1018,7 +1018,7 @@ body[data-view="tasks"] .panel {
   margin: 22px 8px 10px;
   font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.04em;
   color: var(--label-2);
 }
@@ -1081,7 +1081,7 @@ body[data-view="tasks"] .panel {
 .sheet-title {
   font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.04em;
   color: var(--label-2);
 }
@@ -1234,10 +1234,6 @@ textarea.field {
 .hw-item.private {
   background: color-mix(in srgb, var(--label) 7%, transparent);
   box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--label) 18%, transparent);
-}
-
-.hw-item.private::before {
-  content: "🔒";
 }
 
 .private-toggle {

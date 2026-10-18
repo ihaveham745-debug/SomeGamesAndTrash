@@ -51,22 +51,22 @@ export const classLabel = (id) => `${CLASSES[id].grade} · ${CLASSES[id].short}`
 export const groupLabel = (group) => GRADES[group] ?? PROFILES[group]?.short ?? group;
 
 // --- Предметы ---
-const RU = 'Русский язык';
-const LIT = 'Литература';
-const EN = 'Английский язык';
-const MATH = 'Математика';
-const PROB = 'Вероятность и статистика';
-const INF = 'Информатика';
-const PHYS = 'Физика';
-const CHEM = 'Химия';
-const BIO = 'Биология';
-const HIST = 'История';
-const SOC = 'Обществознание';
-const GEO = 'География';
-const PE = 'Физкультура';
-const OBZR = 'ОБЗР';
-const TALKS = 'Разговоры о важном';
-const HORIZONS = 'Россия — мои горизонты';
+const RU = 'русский язык';
+const LIT = 'литература';
+const EN = 'английский язык';
+const MATH = 'математика';
+const PROB = 'вероятность и статистика';
+const INF = 'информатика';
+const PHYS = 'физика';
+const CHEM = 'химия';
+const BIO = 'биология';
+const HIST = 'история';
+const SOC = 'обществознание';
+const GEO = 'география';
+const PE = 'физкультура';
+const OBZR = 'обзр';
+const TALKS = 'разговоры о важном';
+const HORIZONS = 'россия — мои горизонты';
 
 const GYM = 'спортзал';
 
@@ -107,7 +107,7 @@ export const ROWS = {
   3: [
     row(1, A(RU, '206'), B(HIST, '113')),
     row(2, A(RU, '206'), B(HIST, '113')),
-    row(3, S(['Общественная география', '211'], [PHYS, '213'], ['Решение уравнений', '115'], [EN, '114'])),
+    row(3, S(['общественная география', '211'], [PHYS, '213'], ['решение уравнений', '115'], [EN, '114'])),
     row(4, S([EN, '207'], [PHYS, '213']), P('en gum', MATH, '210')),
     row(5, P('se tech', MATH, '115'), P('en gum', MATH, '210')),
     row(6, A(HIST, '114'), B(RU, '211')),
@@ -115,21 +115,21 @@ export const ROWS = {
   ],
   4: [
     row(1, A(HORIZONS, '210'), B(HORIZONS, '212')),
-    row(2, P('se tech', BIO, '212', 'база'), S(null, null, ['Биохимия', '210'], ['Введение в литературоведение', '213'])),
-    row(3, P('se tech', MATH, '115'), S(null, null, [CHEM, '210'], ['Стилистика', '213'])),
+    row(2, P('se tech', BIO, '212', 'база'), S(null, null, ['биохимия', '210'], ['введение в литературоведение', '213'])),
+    row(3, P('se tech', MATH, '115'), S(null, null, [CHEM, '210'], ['стилистика', '213'])),
     row(4, P('se tech', MATH, '115'), S(null, null, [CHEM, '210'], [EN, '110'])),
-    row(5, P('se tech', PROB, '115'), P('en gum', OBZR, 'НШ')),
+    row(5, P('se tech', PROB, '115'), P('en gum', OBZR, 'нш')),
     row(6, A(GEO, '211'), B(LIT, '213')),
     row(7, A(LIT, '114'), B(GEO, '211')),
   ],
   5: [
-    row(1, S([SOC, '114'], [INF, '208'], ['Биофизика', '212'], [SOC, '114'])),
+    row(1, S([SOC, '114'], [INF, '208'], ['биофизика', '212'], [SOC, '114'])),
     row(2, S([SOC, '114'], [INF, '208'], [INF, '208'], [SOC, '114'])),
     row(3, P('se tech', CHEM, '210', 'база'), P('en gum', PHYS, '213', 'база')),
-    row(4, P('se tech', OBZR, 'НШ'), P('en gum', PHYS, '213', 'база')),
+    row(4, P('se tech', OBZR, 'нш'), P('en gum', PHYS, '213', 'база')),
     // 5–6: обществознание — общая группа тех + ен
     row(5, S([PHYS, '213', 'база'], null, null, [INF, '208']), P('tech en', SOC, '113')),
-    row(6, S([PHYS, '213', 'база'], null, null, ['Деловой английский', '114']), P('tech en', SOC, '113')),
+    row(6, S([PHYS, '213', 'база'], null, null, ['деловой английский', '114']), P('tech en', SOC, '113')),
     row(7, S(null, [PHYS, '213']), P('en gum', PROB, '112')),
   ],
 };

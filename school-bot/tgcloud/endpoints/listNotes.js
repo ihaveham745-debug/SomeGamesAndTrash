@@ -6,6 +6,6 @@ import { groupsOf } from '../lib/homework.js';
 import { groupNotes } from '../lib/notes.js';
 
 export default async function (input, ctx) {
-  if (!isClass(input?.cls)) throw new EndpointError('Неизвестный класс', { code: 'INVALID' });
+  if (!isClass(input?.cls)) throw new EndpointError('неизвестный класс', { code: 'INVALID' });
   return { notes: await groupNotes(groupsOf(input.cls), ctx.initData?.user?.id ?? null), me: ctx.initData?.user?.id ?? null };
 }

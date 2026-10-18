@@ -7,7 +7,7 @@ import { store } from '../lib/notes.js';
 
 export default async function (input, ctx) {
   const user = ctx.initData.user;
-  if (!user) throw new EndpointError('Открой приложение из чата с ботом', { code: 'NO_USER' });
+  if (!user) throw new EndpointError('открой приложение из чата с ботом', { code: 'NO_USER' });
 
   const note = { cls: input.cls, subject: input.subject, due: input.due ?? null, text: cleanText(input.text) };
   const error = validateNote(note);
