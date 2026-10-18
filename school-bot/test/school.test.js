@@ -175,9 +175,9 @@ test('бот: ДЗ по профильному уроку видит вся гр
   const now = at('2026-10-14', 10);
 
   const res = await replyTo(msg(7, '/dz стил: выучить термины'), now, store, prefs);
-  assert.match(res.text, /Стилистика.*10а · гум.*Чт, 15 октября/s);
+  assert.match(res.text, /Стилистика.*Чт, 15 октября.*Видит вся группа «гум»/s);
   assert.deepEqual(saved[0], {
-    id: 1, cls: 'gum', subject: 'Стилистика', due: '2026-10-15', text: 'выучить термины', authorId: 5, authorName: 'Аня',
+    id: 1, cls: 'gum', subject: 'Стилистика', due: '2026-10-15', text: 'выучить термины', private: false, authorId: 5, authorName: 'Аня',
   });
   await replyTo(msg(7, '/dz лит: читать главу 3'), now, store, prefs); // литература у 10а — общая
   assert.equal(saved[1].cls, 'a');
@@ -187,4 +187,45 @@ test('бот: ДЗ по профильному уроку видит вся гр
   assert.ok(!(await text(8)).includes('главу 3')); // а литература у 10б своя
   assert.ok(!(await text(9)).includes('выучить термины'));
   assert.match((await replyTo(msg(7, '/dz биохим: x'), now, store, prefs)).text, /Не понял, какой предмет/);
+});
+
+test('бот: /my — личное ДЗ, видит только автор и только в личке', async () => {
+  const prefs = memoryPrefs();
+  await prefs.set(7, 'a-gum');
+  await prefs.set(8, 'b-gum');
+  await prefs.set(-100, 'a-gum'); // группа класса
+  const saved = [];
+  const visible = (n, viewer) => !n.private || n.authorId === viewer;
+  const store = {
+    range: async (groups, from, to, viewer) => saved.filter((n) => groups.includes(n.cls) && visible(n, viewer) && n.due >= from && n.due <= to),
+    upcoming: async (groups, from, viewer) => saved.filter((n) => groups.includes(n.cls) && visible(n, viewer)),
+    add: async (n) => saved.push({ id: saved.length + 1, ...n }),
+  };
+  const msg = (chat, text, type = 'private') => ({ text, chat: { id: chat, type }, from: { id: chat > 0 ? chat : 7, first_name: 'Аня' } });
+  const now = at('2026-10-14', 10);
+
+  const res = await replyTo(msg(7, '/my стил: повторить термины'), now, store, prefs);
+  assert.match(res.text, /личное ДЗ.*Стилистика.*Видишь только ты/s);
+  assert.equal(saved[0].private, true);
+  await replyTo(msg(7, '/dz стил: эссе'), now, store, prefs);
+  assert.equal(saved[1].private, false);
+  assert.match((await replyTo(msg(7, '/dz стил: эссе'), now, store, prefs)).text, /Видит вся группа «гум» — из 10а и 10б/);
+
+  const mine = (await replyTo(msg(7, '/dz'), now, store, prefs)).text;
+  assert.match(mine, /🔒 повторить термины/);
+  assert.match(mine, /эссе <i>— Аня<\/i>/);
+  const other = (await replyTo(msg(8, '/dz'), now, store, prefs)).text;
+  assert.ok(!other.includes('повторить термины'));
+  assert.match(other, /эссе/);
+
+  // в группе личное не показываем, даже автору
+  const group = (await replyTo(msg(-100, '/dz', 'supergroup'), now, store, prefs)).text;
+  assert.ok(!group.includes('повторить термины'));
+  assert.match((await replyTo(msg(-100, '/my стил: x', 'supergroup'), now, store, prefs)).text, /только в личке/);
+
+  // и в расписании дня у урока — тоже только у автора
+  const thu = await viewFor('d:a-gum:2026-10-15', 7, now, store, prefs);
+  assert.match(thu.view.text, /🔒 повторить термины/);
+  const thuOther = await viewFor('d:b-gum:2026-10-15', 8, now, store, prefs);
+  assert.ok(!thuOther.view.text.includes('повторить термины'));
 });

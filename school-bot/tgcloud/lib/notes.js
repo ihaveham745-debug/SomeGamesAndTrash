@@ -12,7 +12,13 @@ const FIELDS = {
   text: notes.text,
   authorId: notes.authorId,
   authorName: notes.authorName,
+  private: notes.private,
 };
+
+/** Общие записи и личные записи viewer (null — только общие). */
+const visibleTo = (viewer) => (viewer
+  ? or(eq(notes.private, false), eq(notes.authorId, viewer))
+  : eq(notes.private, false));
 
 // Если база недоступна, расписание всё равно показываем — просто без заданий.
 async function safe(query) {
@@ -25,23 +31,23 @@ async function safe(query) {
 }
 
 export const store = {
-  range: (groups, from, to) => safe(
+  range: (groups, from, to, viewer = null) => safe(
     db.select(FIELDS).from(notes)
-      .where(and(inArray(notes.cls, groups), gte(notes.due, from), lte(notes.due, to))).orderBy(asc(notes.id)).all(),
+      .where(and(inArray(notes.cls, groups), visibleTo(viewer), gte(notes.due, from), lte(notes.due, to))).orderBy(asc(notes.id)).all(),
   ),
-  upcoming: (groups, from) => safe(
+  upcoming: (groups, from, viewer = null) => safe(
     db.select(FIELDS).from(notes)
-      .where(and(inArray(notes.cls, groups), or(gte(notes.due, from), isNull(notes.due)))).orderBy(asc(notes.id)).all(),
+      .where(and(inArray(notes.cls, groups), visibleTo(viewer), or(gte(notes.due, from), isNull(notes.due)))).orderBy(asc(notes.id)).all(),
   ),
-  add: async ({ cls, subject, due, text, authorId, authorName }) => {
-    const [row] = await db.insert(notes).values({ cls, subject, due, text, authorId, authorName }).returning(FIELDS);
+  add: async ({ cls, subject, due, text, authorId, authorName, private: isPrivate = false }) => {
+    const [row] = await db.insert(notes).values({ cls, subject, due, text, authorId, authorName, private: isPrivate }).returning(FIELDS);
     return row;
   },
 };
 
-/** Все записи групп (для Mini App: их немного, приложение само раскладывает по дням). */
-export function groupNotes(groups) {
-  return db.select(FIELDS).from(notes).where(inArray(notes.cls, groups)).orderBy(asc(notes.id)).limit(2000).all();
+/** Все записи групп, которые видит viewer (для Mini App: их немного, приложение само раскладывает по дням). */
+export function groupNotes(groups, viewer) {
+  return db.select(FIELDS).from(notes).where(and(inArray(notes.cls, groups), visibleTo(viewer))).orderBy(asc(notes.id)).limit(2000).all();
 }
 
 /** Удалить свою запись. true — удалили, false — нет такой или она чужая. */

@@ -198,7 +198,9 @@ function lessonCard(p, isNow, homework = []) {
     .filter(Boolean)
     .join(' ');
   const title = `<b>${escapeHtml(p.subject)}</b>` + (p.type ? ` · <i>${escapeHtml(p.type)}</i>` : '');
-  const hw = homework.map((n) => `📝 ${escapeHtml(n.text)}${n.authorName ? ` <i>— ${escapeHtml(n.authorName)}</i>` : ''}`);
+  const hw = homework.map((n) => (n.private
+    ? `🔒 ${escapeHtml(n.text)}`
+    : `📝 ${escapeHtml(n.text)}${n.authorName ? ` <i>— ${escapeHtml(n.authorName)}</i>` : ''}`));
   return `<blockquote>${[head, title, ...(p.room ? [`📍 ${escapeHtml(roomText(p.room))}`] : []), ...hw].join('\n')}</blockquote>`;
 }
 

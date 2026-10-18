@@ -1,4 +1,5 @@
 // POST /api/addNote — новое задание (due — дата урока) или заметка к предмету (due = null).
+// private: true — личная запись, её увидит только автор.
 
 import { EndpointError } from 'sdk';
 import { cleanText, groupOf, validateNote } from '../lib/homework.js';
@@ -13,5 +14,6 @@ export default async function (input, ctx) {
   if (error) throw new EndpointError(error, { code: 'INVALID' });
 
   const authorName = [user.first_name, user.last_name && `${user.last_name[0]}.`].filter(Boolean).join(' ') || user.username || null;
-  return { note: await store.add({ ...note, cls: groupOf(note.cls, note.subject), authorId: user.id, authorName }) };
+  const isPrivate = input.private === true;
+  return { note: await store.add({ ...note, cls: groupOf(note.cls, note.subject), private: isPrivate, authorId: user.id, authorName }) };
 }

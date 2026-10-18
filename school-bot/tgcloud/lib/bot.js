@@ -5,16 +5,18 @@
 // Класс чата (lib/prefs.js в боте, объект в тестах):
 //   prefs.get(chatId) → 'a-se' … 'b-gum' | null;  prefs.set(chatId, cls).
 // Задания и заметки (lib/notes.js в боте, массив в тестах):
-//   store.range(groups, from, to) — записи групп с due в этих датах ('ГГГГ-ММ-ДД' включительно);
-//   store.upcoming(groups, from)  — задания групп с due >= from и все их заметки (due = null);
-//   store.add(note)               — сохранить запись (note.cls — группа урока).
+//   store.range(groups, from, to, viewer) — записи групп с due в этих датах ('ГГГГ-ММ-ДД' включительно);
+//   store.upcoming(groups, from, viewer)  — задания групп с due >= from и все их заметки (due = null);
+//   store.add(note)                       — сохранить запись (note.cls — группа урока).
 // Группы варианта — его класс и профиль (homework.groupsOf).
+// viewer — чьи личные записи (private) добавить: id пользователя в личке, null в группе —
+// там сообщение видят все, и личное показывать нельзя.
 
 import {
   DAY_SHORT, SCHOOL_DAYS, addDays, dayMonth, ddmm, escapeHtml, formatBells, formatDay, formatWeek,
   isClass, isoDate, mondayOf, parseDate, schoolDay, stepDay, today, weekday,
 } from './schedule.js';
-import { CLASSES, MINI_APP_URL, PROFILES, TITLE, classLabel } from './school.js';
+import { CLASSES, MINI_APP_URL, PROFILES, TITLE, classLabel, groupLabel } from './school.js';
 import { cleanText, findSubject, groupOf, groupsOf, nextLessonDate, validateNote } from './homework.js';
 
 export const NO_STORE = {
@@ -58,6 +60,7 @@ export const COMMANDS = [
   { command: 'bells', description: '🔔 Расписание звонков' },
   { command: 'dz', description: '📝 Домашние задания (или /dz мат: текст)' },
   { command: 'note', description: '🗒 Заметка к предмету: /note хим: текст' },
+  { command: 'my', description: '🔒 Личное ДЗ, видно только тебе: /my мат: текст' },
   { command: 'class', description: '🏫 Выбрать класс и профиль' },
   { command: 'help', description: '💬 Что умеет бот' },
 ];
@@ -94,6 +97,7 @@ const HELP_TEXT = [
   '',
   'Записать ДЗ к ближайшему уроку: <code>/dz мат: №5–10</code>',
   'Заметка к предмету: <code>/note хим: формулы на стр. 12</code>',
+  'Личное ДЗ (видно только тебе): <code>/my мат: решить ещё №7</code>',
   '',
   'Стрелки ◀️ ▶️ под расписанием листают дни и недели прямо в сообщении.',
   'А кнопка <b>«Расписание»</b> слева от поля ввода открывает приложение.',
@@ -195,14 +199,17 @@ function weekKeyboard(cls, date, nowMs) {
   };
 }
 
-async function dayView(cls, date, nowMs, store) {
-  const notes = await store.range(groupsOf(cls), isoDate(date), isoDate(date));
+/** В личке id чата — это id пользователя; у групп id отрицательные. */
+const viewerOf = (chatId) => (Number.isInteger(chatId) && chatId > 0 ? chatId : null);
+
+async function dayView(cls, date, nowMs, store, viewer) {
+  const notes = await store.range(groupsOf(cls), isoDate(date), isoDate(date), viewer);
   return { text: formatDay(cls, date, nowMs, notes), reply_markup: dayKeyboard(cls, date, nowMs) };
 }
 
-async function weekView(cls, date, nowMs, store) {
+async function weekView(cls, date, nowMs, store, viewer) {
   const monday = mondayOf(date);
-  const notes = await store.range(groupsOf(cls), isoDate(monday), isoDate(addDays(monday, 6)));
+  const notes = await store.range(groupsOf(cls), isoDate(monday), isoDate(addDays(monday, 6)), viewer);
   return { text: formatWeek(cls, date, nowMs, notes), reply_markup: weekKeyboard(cls, date, nowMs) };
 }
 
@@ -211,6 +218,7 @@ async function weekView(cls, date, nowMs, store) {
 const USAGE = {
   hw: 'Записать ДЗ: <code>/dz предмет: что задали</code>\nНапример: <code>/dz мат: №5–10, стр. 42</code>',
   note: 'Заметка: <code>/note предмет: текст</code>\nНапример: <code>/note хим: формулы на стр. 12</code>',
+  my: 'Личное ДЗ (видно только тебе): <code>/my предмет: текст</code>\nНапример: <code>/my мат: решить ещё №7</code>',
 };
 
 function authorName(user) {
@@ -219,13 +227,21 @@ function authorName(user) {
 }
 
 function noteLine(n) {
+  if (n.private) return `🔒 ${escapeHtml(n.text)}`;
   const author = n.authorName ? ` <i>— ${escapeHtml(n.authorName)}</i>` : '';
   return `${escapeHtml(n.text)}${author}`;
 }
 
+/** Кто увидит запись: '🔒 только ты', 'весь 10а', 'вся группа гум (из 10а и 10б)'. */
+function audience(group, isPrivate) {
+  if (isPrivate) return '🔒 Видишь только ты.';
+  if (group === 'a' || group === 'b') return `👥 Видит весь ${groupLabel(group)}.`;
+  return `👥 Видит вся группа «${groupLabel(group)}» — из 10а и 10б.`;
+}
+
 /** Список: задания с сегодняшнего дня по датам, потом заметки по предметам. */
-async function homeworkList(cls, nowMs, store) {
-  const all = await store.upcoming(groupsOf(cls), isoDate(today(nowMs)));
+async function homeworkList(cls, nowMs, store, viewer) {
+  const all = await store.upcoming(groupsOf(cls), isoDate(today(nowMs)), viewer);
   const tasks = all.filter((n) => n.due).sort((a, b) => a.due.localeCompare(b.due) || a.id - b.id);
   const notes = all.filter((n) => !n.due).sort((a, b) => a.subject.localeCompare(b.subject, 'ru') || a.id - b.id);
 
@@ -259,9 +275,14 @@ async function homeworkList(cls, nowMs, store) {
   return { text: [...kept, ...tail].join('\n') };
 }
 
-/** /dz и /note: без текста — список (или подсказка), с «предмет: текст» — новая запись. */
+/**
+ * /dz, /note и /my: без текста — список (или подсказка), с «предмет: текст» — новая запись.
+ * kind: 'hw' — ДЗ для всех, 'my' — личное ДЗ, 'note' — заметка к предмету.
+ */
 async function homeworkCommand(kind, cls, args, message, nowMs, store) {
-  if (!args) return kind === 'hw' ? homeworkList(cls, nowMs, store) : { text: USAGE.note };
+  const viewer = viewerOf(message.chat?.id);
+  if (kind === 'my' && !viewer) return { text: '🔒 Личные записи — только в личке со мной.' };
+  if (!args) return kind === 'hw' ? homeworkList(cls, nowMs, store, viewer) : { text: USAGE[kind] };
 
   const sep = args.indexOf(':');
   if (sep < 0) return { text: `🤔 Не хватает двоеточия после предмета.\n\n${USAGE[kind]}` };
@@ -274,7 +295,7 @@ async function homeworkCommand(kind, cls, args, message, nowMs, store) {
 
   const text = cleanText(args.slice(sep + 1));
   let due = null;
-  if (kind === 'hw') {
+  if (kind !== 'note') {
     const date = nextLessonDate(cls, found.subject, nowMs);
     if (!date) return { text: `🤔 Ближайших уроков по предмету «${escapeHtml(found.subject)}» в расписании нет.` };
     due = isoDate(date);
@@ -282,17 +303,22 @@ async function homeworkCommand(kind, cls, args, message, nowMs, store) {
   const error = validateNote({ cls, subject: found.subject, due, text });
   if (error) return { text: `🤔 ${error === 'Пустой текст' ? 'А что задали? Текст после двоеточия пустой.' : escapeHtml(error)}\n\n${USAGE[kind]}` };
 
+  const group = groupOf(cls, found.subject);
+  const isPrivate = kind === 'my';
   try {
-    await store.add({ cls: groupOf(cls, found.subject), subject: found.subject, due, text, authorId: message.from?.id ?? 0, authorName: authorName(message.from) });
+    await store.add({
+      cls: group, subject: found.subject, due, text, private: isPrivate,
+      authorId: message.from?.id ?? 0, authorName: authorName(message.from),
+    });
   } catch (err) {
     console.error('store.add failed', err);
     return { text: '😕 Не получилось сохранить, попробуй ещё раз чуть позже.' };
   }
-  const who = escapeHtml(classLabel(cls));
-  if (kind === 'note') return { text: `✅ Заметка по предмету <b>${escapeHtml(found.subject)}</b> (${who}) сохранена.\nВсе записи — /dz` };
+  const who = audience(group, isPrivate);
+  if (kind === 'note') return { text: `✅ Заметка по предмету <b>${escapeHtml(found.subject)}</b> сохранена.\n${who}\nВсе записи — /dz` };
   const date = parseDate(due);
   return {
-    text: `✅ Записал ДЗ по предмету <b>${escapeHtml(found.subject)}</b> (${who}) к уроку ${DAY_SHORT[weekday(date) - 1]}, ${dayMonth(date)}.\nВсе задания — /dz`,
+    text: `✅ Записал ${isPrivate ? 'личное ' : ''}ДЗ по предмету <b>${escapeHtml(found.subject)}</b> к уроку ${DAY_SHORT[weekday(date) - 1]}, ${dayMonth(date)}.\n${who}\nВсе задания — /dz`,
     reply_markup: { inline_keyboard: [[button(`📅 ${shortDate(date)}`, 'd', cls, date)]] },
   };
 }
@@ -303,13 +329,14 @@ const ACTIONS = {
   help: async () => ({ text: HELP_TEXT, reply_markup: KEYBOARD }),
   class: async ({ cls }) => classPicker(cls),
   bells: async () => ({ text: formatBells() }),
-  today: ({ cls, now, store }) => dayView(cls, today(now), now, store),
-  tomorrow: ({ cls, now, store }) => dayView(cls, addDays(today(now), 1), now, store),
-  week: ({ cls, now, store }) => weekView(cls, schoolDay(today(now)), now, store),
+  today: ({ cls, now, store, message }) => dayView(cls, today(now), now, store, viewerOf(message.chat?.id)),
+  tomorrow: ({ cls, now, store, message }) => dayView(cls, addDays(today(now), 1), now, store, viewerOf(message.chat?.id)),
+  week: ({ cls, now, store, message }) => weekView(cls, schoolDay(today(now)), now, store, viewerOf(message.chat?.id)),
   dz: ({ cls, now, store, message, args }) => homeworkCommand('hw', cls, args, message, now, store),
   note: ({ cls, now, store, message, args }) => homeworkCommand('note', cls, args, message, now, store),
+  my: ({ cls, now, store, message, args }) => homeworkCommand('my', cls, args, message, now, store),
 };
-const NEEDS_CLASS = new Set(['today', 'tomorrow', 'week', 'dz', 'note']);
+const NEEDS_CLASS = new Set(['today', 'tomorrow', 'week', 'dz', 'note', 'my']);
 
 const COMMAND = /^\/([a-z_]+)(?:@(\w+))?(?:\s|$)/i;
 
@@ -359,7 +386,7 @@ export async function viewFor(data, chatId, nowMs = Date.now(), store = NO_STORE
   if (pick) {
     if (!isClass(pick[1])) return null;
     await prefs.set(chatId, pick[1]);
-    const view = await dayView(pick[1], schoolDay(today(nowMs)), nowMs, store);
+    const view = await dayView(pick[1], schoolDay(today(nowMs)), nowMs, store, viewerOf(chatId));
     return { view, chosen: pick[1] };
   }
   const match = /^([dw]):([a-z]+-[a-z]+):(today|\d{4}-\d{2}-\d{2})$/.exec(data ?? '');
@@ -367,7 +394,8 @@ export async function viewFor(data, chatId, nowMs = Date.now(), store = NO_STORE
   const date = match[3] === TODAY ? today(nowMs) : parseDate(match[3]);
   if (match[3] !== TODAY && isoDate(date) !== match[3]) return null; // 2026-02-31 и подобное
   const cls = match[2];
-  return { view: match[1] === 'd' ? await dayView(cls, date, nowMs, store) : await weekView(cls, date, nowMs, store) };
+  const viewer = viewerOf(chatId);
+  return { view: match[1] === 'd' ? await dayView(cls, date, nowMs, store, viewer) : await weekView(cls, date, nowMs, store, viewer) };
 }
 
 /** Сообщение после выбора класса — с обычной клавиатурой внизу. */

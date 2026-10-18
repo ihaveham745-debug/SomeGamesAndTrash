@@ -6,8 +6,8 @@ import {
   inYear, isClass, isYearWeek, isoDate, lessonsFor, lessonsWord, minutesNow, mondayOf, outOfYear,
   parseDate, schoolDay, stepDay, today, weekday,
 } from './lib/schedule.js';
-import { CLASSES, classLabel } from './lib/school.js';
-import { MAX_NOTE_LENGTH, cleanText, homeworkFor, nextLessonDate, subjectsOf } from './lib/homework.js';
+import { CLASSES, classLabel, groupLabel } from './lib/school.js';
+import { MAX_NOTE_LENGTH, cleanText, groupOf, homeworkFor, nextLessonDate, subjectsOf } from './lib/homework.js';
 
 const tg = window.Telegram?.WebApp;
 // telegram-web-app.js ставит platform 'unknown', если страницу открыли не в Telegram.
@@ -156,8 +156,9 @@ function statusHtml(status, minutes) {
 
 function noteItemHtml(n) {
   const mine = state.me !== null && n.authorId === state.me;
-  return `<div class="hw-item">
-    <div class="hw-body"><div class="hw-text">${esc(n.text)}</div>${n.authorName ? `<div class="hw-by">${esc(n.authorName)}</div>` : ''}</div>
+  const by = n.private ? 'только ты' : n.authorName;
+  return `<div class="hw-item${n.private ? ' private' : ''}">
+    <div class="hw-body"><div class="hw-text">${esc(n.text)}</div>${by ? `<div class="hw-by">${esc(by)}</div>` : ''}</div>
     ${mine ? `<button class="hw-del press" type="button" data-del="${n.id}" aria-label="Удалить">${ICON.trash}</button>` : ''}
   </div>`;
 }
@@ -352,6 +353,10 @@ function openComposer({ kind, subject = null, due = null }) {
     <div class="sheet-due"></div>
     <textarea class="field" name="text" rows="4" maxlength="${MAX_NOTE_LENGTH}"
       placeholder="${kind === 'hw' ? 'Что задали? Например: №5–10, стр. 42' : 'Например: формулы на стр. 12'}"></textarea>
+    <label class="private-toggle">
+      <span><b>🔒 Только мне</b><small class="who"></small></span>
+      <input type="checkbox" name="private" role="switch">
+    </label>
     <div class="sheet-error" role="alert"></div>
     <div class="sheet-buttons">
       <button class="btn press" type="button" data-close>Отмена</button>
@@ -373,8 +378,20 @@ function openComposer({ kind, subject = null, due = null }) {
       dueBox.textContent = `К уроку: ${DAY_NAMES[weekday(d) - 1]}, ${dayMonth(d)}`;
     }
   };
+  // Кто увидит запись: общий урок — весь класс, профильный — вся группа из обоих классов.
+  const whoBox = root.querySelector('.who');
+  const updateWho = () => {
+    const subj = fixed ? subject : form.subject.value;
+    const group = subj ? groupOf(cls, subj) : null;
+    if (form.private.checked) whoBox.textContent = 'Увидишь только ты';
+    else if (!group) whoBox.textContent = 'Выключено — увидят одноклассники';
+    else if (group === 'a' || group === 'b') whoBox.textContent = `Выключено — увидит весь ${groupLabel(group)}`;
+    else whoBox.textContent = `Выключено — увидит группа «${groupLabel(group)}» из 10а и 10б`;
+  };
   updateDue();
-  form.subject?.addEventListener('change', updateDue);
+  updateWho();
+  form.subject?.addEventListener('change', () => { updateDue(); updateWho(); });
+  form.private.addEventListener('change', updateWho);
   form.text.focus();
 
   form.addEventListener('submit', async (e) => {
@@ -387,7 +404,9 @@ function openComposer({ kind, subject = null, due = null }) {
     const save = form.querySelector('[type="submit"]');
     save.disabled = true;
     try {
-      const { note } = await callBot('addNote', { cls, subject: subj, due: kind === 'hw' ? currentDue : null, text });
+      const { note } = await callBot('addNote', {
+        cls, subject: subj, due: kind === 'hw' ? currentDue : null, text, private: form.private.checked,
+      });
       if (cls === state.cls) state.notes.push(note);
       try { tg.HapticFeedback?.notificationOccurred('success'); } catch { /* старый клиент */ }
       closeSheet();
