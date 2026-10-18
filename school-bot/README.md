@@ -68,7 +68,7 @@ tgcloud/
   lib/notes.js, prefs.js — база: задания и выбранный класс
   handlers/             — message, callback_query
   endpoints/            — для Mini App: listNotes, addNote, deleteNote, getClass, setClass,
-                          sendNoteFile, noteFile
+                          sendNoteFile, noteFile, getWallpaper, setWallpaper, wallpaperImage
   lib/files.js          — файлы: загрузить в Telegram, прислать обратно
   schema.js             — таблицы notes и chats
 webapp/                 — Mini App (index.html, style.css, app.js)
@@ -88,5 +88,12 @@ test/school.test.js     — тесты
 Своего хранилища нет: файл лежит в Telegram, в базе — `file_id` (`lib/files.js`). Чтобы получить `file_id`
 файла из приложения, бот на секунду отправляет его человеку в личку и удаляет сообщение.
 Кто видит файл — так же, как запись: класс, профильная группа или только автор.
+
+## Обои
+
+Кнопка «обои» в приложении — у каждого свои, другим ничего не меняется: котики, «стекло» или своё фото
+из галереи. Фото приложение уменьшает до 1280 px и отправляет боту (в Telegram, в базе — `file_id`,
+таблица `wallpapers`), выбор одинаковый на всех устройствах. Своё фото получить может только его хозяин
+(`wallpaperImage` отдаёт обои того, кто спрашивает).
 
 Все тексты бота и приложения — строчными и без эмодзи (то, что пишут сами ученики, остаётся как есть).

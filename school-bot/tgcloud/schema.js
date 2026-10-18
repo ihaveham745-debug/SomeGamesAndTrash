@@ -30,3 +30,12 @@ export const chats = table('chats', {
   cls: text('cls').notNull(),
   updated: integer('updated_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
 });
+
+// Обои в приложении — у каждого свои. kind: 'cats' | 'glass' | 'photo';
+// у своего фото файл лежит в Telegram, здесь — file_id.
+export const wallpapers = table('wallpapers', {
+  userId: integer('user_id').primaryKey(),
+  kind: text('kind').notNull(),
+  fileId: text('file_id'),
+  updated: integer('updated_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
+});

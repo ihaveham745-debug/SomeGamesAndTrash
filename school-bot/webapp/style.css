@@ -129,7 +129,17 @@ svg .fill {
   /* обои: коты с пиццей в космосе; сверху — лёгкая вуаль, чтобы текст читался */
   background:
     linear-gradient(var(--veil), var(--veil)),
-    url("wallpaper.jpg") center / cover no-repeat,
+    var(--wall-img, url("wallpaper.jpg")) center / cover no-repeat,
+    var(--base);
+}
+
+/* обои «стекло» — цветные пятна, как было до котиков */
+.wallpaper.glass {
+  background:
+    radial-gradient(60vmax 50vmax at 8% 4%, var(--blob-1), transparent 62%),
+    radial-gradient(55vmax 50vmax at 100% 22%, var(--blob-2), transparent 60%),
+    radial-gradient(60vmax 55vmax at 0% 78%, var(--blob-3), transparent 62%),
+    radial-gradient(55vmax 50vmax at 100% 100%, var(--blob-4), transparent 60%),
     var(--base);
 }
 
@@ -1406,4 +1416,67 @@ textarea.field {
 
 :root[data-scheme="dark"] {
   --text-halo: rgba(0, 0, 0, 0.85);
+}
+
+/* --- Обои --- */
+
+.title-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wall-btn svg {
+  width: 16px;
+  height: 16px;
+  transform: none;
+  stroke-width: 2;
+}
+
+.wall-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.wall-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.wall-option .thumb {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 3 / 4;
+  border-radius: 16px;
+  background: center / cover no-repeat;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--label) 14%, transparent);
+  font-size: 28px;
+  font-weight: 400;
+  color: var(--label-2);
+}
+
+.wall-option.current .thumb {
+  box-shadow: inset 0 0 0 3px var(--accent);
+}
+
+.wall-option .thumb.cats {
+  background-image: url("wallpaper.jpg");
+}
+
+.wall-option .thumb.glass {
+  background:
+    radial-gradient(80% 60% at 10% 10%, var(--blob-1), transparent 70%),
+    radial-gradient(80% 60% at 100% 40%, var(--blob-2), transparent 70%),
+    radial-gradient(80% 60% at 0% 90%, var(--blob-3), transparent 70%),
+    var(--base);
+}
+
+.wall-hint {
+  font-size: 13px;
+  color: var(--label-2);
 }

@@ -526,6 +526,178 @@ async function deleteNote(id) {
   }
 }
 
+// --- Обои: у каждого свои ---
+// Выбор хранится у бота (getWallpaper / setWallpaper) — на всех устройствах одинаковый.
+// Своё фото: приложение уменьшает его и отправляет боту, а копию держит в localStorage,
+// чтобы обои появлялись сразу, без загрузки.
+
+const WALL_KEY = 'school.wall';
+const WALL_IMG_KEY = 'school.wall.img';
+const WALLS = [
+  { kind: 'cats', name: 'котики' },
+  { kind: 'glass', name: 'стекло' },
+  { kind: 'photo', name: 'своё фото' },
+];
+
+function storeGet(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+
+function storeSet(key, value) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false; // нет места или приватный режим — просто не закэшируем
+  }
+}
+
+function cachedWall() {
+  try {
+    const wall = JSON.parse(storeGet(WALL_KEY) ?? 'null');
+    if (wall?.kind) return wall;
+  } catch { /* битый кэш */ }
+  return { kind: 'cats', fileId: null };
+}
+
+/** Показать обои. img — data:-ссылка своего фото (для kind 'photo'). */
+function applyWall(kind, img = null) {
+  const el = document.querySelector('.wallpaper');
+  el.classList.toggle('glass', kind === 'glass');
+  if (kind === 'photo' && img) el.style.setProperty('--wall-img', `url("${img}")`);
+  else el.style.removeProperty('--wall-img');
+}
+
+function rememberWall(wall, img) {
+  storeSet(WALL_KEY, JSON.stringify({ kind: wall.kind, fileId: wall.fileId ?? null }));
+  if (wall.kind === 'photo' && img) storeSet(WALL_IMG_KEY, img);
+}
+
+/** Сразу — из кэша, потом сверяемся с ботом (вдруг обои сменили на другом телефоне). */
+async function loadWall() {
+  const cached = cachedWall();
+  const cachedImg = storeGet(WALL_IMG_KEY);
+  applyWall(cached.kind, cachedImg);
+  if (!canWrite) return;
+  try {
+    const wall = await callBot('getWallpaper');
+    if (wall.fileId !== cached.fileId) storeSet(WALL_IMG_KEY, null); // фото сменили на другом телефоне
+    if (wall.kind !== 'photo') {
+      applyWall(wall.kind);
+      rememberWall(wall);
+      return;
+    }
+    if (wall.fileId === cached.fileId && cachedImg) {
+      applyWall('photo', cachedImg);
+      rememberWall(wall);
+      return;
+    }
+    const { type, data } = await callBot('wallpaperImage');
+    const img = `data:${type};base64,${data}`;
+    applyWall('photo', img);
+    rememberWall(wall, img);
+  } catch (err) {
+    console.warn('wallpaper load failed', err);
+  }
+}
+
+/** Фото из галереи → картинка не больше 1280 px (jpeg), как data:-ссылка. */
+function shrinkImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('не получилось открыть картинку'));
+    };
+    img.src = url;
+  });
+}
+
+function openWallPicker() {
+  const current = cachedWall().kind;
+  const myImg = storeGet(WALL_IMG_KEY);
+  const tiles = WALLS.map((w) => {
+    const style = w.kind === 'photo' && myImg ? ` style="background-image:url('${myImg}')"` : '';
+    const inner = w.kind === 'photo' && !myImg ? '+' : '';
+    return `<button type="button" class="wall-option press${w.kind === current ? ' current' : ''}" data-wall="${w.kind}">
+      <span class="thumb ${w.kind}"${style}>${inner}</span>${esc(w.name)}
+    </button>`;
+  }).join('');
+  const root = openSheet(`<div class="sheet glass blur">
+    <div class="sheet-title">обои — только у тебя</div>
+    <div class="wall-list">${tiles}</div>
+    <input type="file" accept="image/*" name="wall-photo" hidden>
+    <button class="attach-btn press" type="button" data-gallery>${ICON.plus}<span>${myImg ? 'другое фото из галереи' : 'выбрать фото из галереи'}</span></button>
+    <div class="sheet-error" role="alert"></div>
+    <div class="sheet-buttons"><button class="btn press" type="button" data-close>готово</button></div>
+  </div>`);
+  const input = root.querySelector('input[type="file"]');
+  const error = root.querySelector('.sheet-error');
+  const mark = (kind) => root.querySelectorAll('.wall-option').forEach((b) => b.classList.toggle('current', b.dataset.wall === kind));
+
+  root.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-gallery]')) return void input.click();
+    const opt = e.target.closest('[data-wall]');
+    if (!opt) return;
+    haptic();
+    if (opt.dataset.wall === 'photo') {
+      const img = storeGet(WALL_IMG_KEY);
+      if (!img) return void input.click();
+      // уже есть своё фото — просто возвращаемся к нему
+      applyWall('photo', img);
+      rememberWall({ kind: 'photo', fileId: cachedWall().fileId }, img);
+      mark('photo');
+      if (canWrite) callBot('setWallpaper', { kind: 'photo' }).catch((err) => console.warn('setWallpaper failed', err));
+      return;
+    }
+    const kind = opt.dataset.wall;
+    applyWall(kind);
+    rememberWall({ kind, fileId: cachedWall().fileId });
+    mark(kind);
+    if (canWrite) callBot('setWallpaper', { kind }).catch((err) => console.warn('setWallpaper failed', err));
+  });
+
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    input.value = '';
+    if (!file) return;
+    error.textContent = '';
+    const before = cachedWall();
+    const beforeImg = storeGet(WALL_IMG_KEY);
+    try {
+      const img = await shrinkImage(file);
+      applyWall('photo', img);
+      mark('photo');
+      root.querySelector('.thumb.photo').style.backgroundImage = `url('${img}')`;
+      root.querySelector('.thumb.photo').textContent = '';
+      let wall = { kind: 'photo', fileId: null };
+      if (canWrite) {
+        error.textContent = 'сохраняю…';
+        wall = await callBot('setWallpaper', {
+          kind: 'photo', file: { name: 'wallpaper.jpg', type: 'image/jpeg', data: img.split(',')[1] },
+        });
+        error.textContent = '';
+      }
+      rememberWall(wall, img);
+    } catch (err) {
+      error.textContent = err?.message || 'не получилось поставить фото';
+      applyWall(before.kind, beforeImg);
+      mark(before.kind);
+    }
+  });
+}
+
 // --- Шапка, таб-бар и отрисовка ---
 
 /** Двигает «каплю» под выбранный день и «линзу» под выбранную вкладку. */
@@ -601,7 +773,7 @@ function go(date, view = state.view) {
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('.sheet-backdrop')) return;
-  const el = e.target.closest('[data-add], [data-del], [data-file], [data-date], [data-view], #prev-week, #next-week, #to-today, #class-btn');
+  const el = e.target.closest('[data-add], [data-del], [data-file], [data-date], [data-view], #prev-week, #next-week, #to-today, #class-btn, #wall-btn');
   if (!el) return;
   if (el.dataset.file) openFile(Number(el.dataset.file));
   else if (el.dataset.add) openComposer({ kind: el.dataset.add, subject: el.dataset.subject, due: el.dataset.due });
@@ -612,6 +784,7 @@ document.addEventListener('click', (e) => {
   else if (el.id === 'next-week') go(addDays(state.date, 7));
   else if (el.id === 'to-today') go(firstDay(), 'day');
   else if (el.id === 'class-btn') openClassPicker();
+  else if (el.id === 'wall-btn') openWallPicker();
 });
 
 document.addEventListener('keydown', (e) => {
@@ -681,6 +854,7 @@ function applyScheme() {
 document.title = 'расписание 10-х классов';
 
 applyScheme();
+loadWall();
 if (inTelegram) {
   tg.ready();
   tg.expand();
