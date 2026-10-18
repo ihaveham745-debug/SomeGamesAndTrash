@@ -638,7 +638,10 @@ function openWallPicker() {
     <div class="sheet-title">обои — только у тебя</div>
     <div class="wall-list">${tiles}</div>
     <input type="file" accept="image/*" name="wall-photo" hidden>
-    <button class="attach-btn press" type="button" data-gallery>${ICON.plus}<span>${myImg ? 'другое фото из галереи' : 'выбрать фото из галереи'}</span></button>
+    <div class="attach">
+      <button class="attach-btn press" type="button" data-gallery>${ICON.plus}<span>${myImg ? 'другое фото из галереи' : 'выбрать фото из галереи'}</span></button>
+      <button class="attach-clear press" type="button" data-delete-photo aria-label="удалить своё фото"${myImg ? '' : ' hidden'}>${ICON.trash}</button>
+    </div>
     <div class="sheet-error" role="alert"></div>
     <div class="sheet-buttons"><button class="btn press" type="button" data-close>готово</button></div>
   </div>`);
@@ -648,6 +651,7 @@ function openWallPicker() {
 
   root.addEventListener('click', async (e) => {
     if (e.target.closest('[data-gallery]')) return void input.click();
+    if (e.target.closest('[data-delete-photo]')) return void deletePhoto();
     const opt = e.target.closest('[data-wall]');
     if (!opt) return;
     haptic();
@@ -667,6 +671,30 @@ function openWallPicker() {
     mark(kind);
     if (canWrite) callBot('setWallpaper', { kind }).catch((err) => console.warn('setWallpaper failed', err));
   });
+
+  /** Своё фото больше не нужно: стирает его у бота и в кэше; если стояло — ставим котиков. */
+  async function deletePhoto() {
+    const ok = await new Promise((resolve) => {
+      if (tg?.showConfirm && inTelegram) tg.showConfirm('удалить своё фото из обоев?', resolve);
+      else resolve(window.confirm('удалить своё фото из обоев?'));
+    });
+    if (!ok) return;
+    error.textContent = '';
+    try {
+      const wall = canWrite ? await callBot('deleteWallpaper') : { kind: cachedWall().kind === 'photo' ? 'cats' : cachedWall().kind, fileId: null };
+      storeSet(WALL_IMG_KEY, null);
+      rememberWall(wall);
+      applyWall(wall.kind);
+      mark(wall.kind);
+      const thumb = root.querySelector('.thumb.photo');
+      thumb.style.backgroundImage = '';
+      thumb.textContent = '+';
+      root.querySelector('[data-delete-photo]').hidden = true;
+      root.querySelector('[data-gallery] span').textContent = 'выбрать фото из галереи';
+    } catch (err) {
+      error.textContent = err?.message || 'не получилось удалить';
+    }
+  }
 
   input.addEventListener('change', async () => {
     const file = input.files[0];
@@ -690,6 +718,8 @@ function openWallPicker() {
         error.textContent = '';
       }
       rememberWall(wall, img);
+      root.querySelector('[data-delete-photo]').hidden = false;
+      root.querySelector('[data-gallery] span').textContent = 'другое фото из галереи';
     } catch (err) {
       error.textContent = err?.message || 'не получилось поставить фото';
       applyWall(before.kind, beforeImg);

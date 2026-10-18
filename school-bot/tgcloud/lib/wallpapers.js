@@ -20,3 +20,10 @@ export async function setWallpaper(userId, kind, fileId) {
     .onConflictDoUpdate({ target: wallpapers.userId, set }).run();
   return getWallpaper(userId);
 }
+
+/** Удалить своё фото. Если оно стояло обоями — возвращаем котиков. */
+export async function deletePhoto(userId) {
+  const current = await getWallpaper(userId);
+  const kind = current.kind === 'photo' ? DEFAULT_WALLPAPER.kind : current.kind;
+  return setWallpaper(userId, kind, null);
+}

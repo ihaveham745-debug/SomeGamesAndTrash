@@ -1480,3 +1480,13 @@ textarea.field {
   font-size: 13px;
   color: var(--label-2);
 }
+
+.attach-clear svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: #ff453a;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
