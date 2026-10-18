@@ -19,7 +19,8 @@
   --label-3: rgba(60, 60, 67, 0.36);
   --sep: rgba(60, 60, 67, 0.14);
 
-  --glass: rgba(255, 255, 255, 0.58);
+  --veil: rgba(255, 255, 255, 0.5);
+  --glass: rgba(255, 255, 255, 0.78);
   --glass-blur: rgba(255, 255, 255, 0.56);
   --glass-hi: rgba(255, 255, 255, 0.9);
   --glass-lo: rgba(255, 255, 255, 0.35);
@@ -52,7 +53,8 @@
   --label-3: rgba(235, 235, 245, 0.32);
   --sep: rgba(255, 255, 255, 0.1);
 
-  --glass: rgba(44, 44, 58, 0.5);
+  --veil: rgba(0, 0, 0, 0.4);
+  --glass: rgba(30, 30, 42, 0.72);
   --glass-blur: rgba(36, 36, 50, 0.58);
   --glass-hi: rgba(255, 255, 255, 0.22);
   --glass-lo: rgba(255, 255, 255, 0.05);
@@ -124,11 +126,10 @@ svg .fill {
   inset: 0;
   z-index: -1;
   pointer-events: none;
+  /* обои: коты с пиццей в космосе; сверху — лёгкая вуаль, чтобы текст читался */
   background:
-    radial-gradient(60vmax 50vmax at 8% 4%, var(--blob-1), transparent 62%),
-    radial-gradient(55vmax 50vmax at 100% 22%, var(--blob-2), transparent 60%),
-    radial-gradient(60vmax 55vmax at 0% 78%, var(--blob-3), transparent 62%),
-    radial-gradient(55vmax 50vmax at 100% 100%, var(--blob-4), transparent 60%),
+    linear-gradient(var(--veil), var(--veil)),
+    url("wallpaper.jpg") center / cover no-repeat,
     var(--base);
 }
 
@@ -1388,4 +1389,21 @@ textarea.field {
 .hw,
 .hw-item {
   min-width: 0;
+}
+
+/* текст прямо на обоях (заголовки дня, «расписание») — с тенью, чтобы читался */
+.titlebar h1,
+.day-head,
+.section,
+.muted,
+.empty {
+  text-shadow: 0 1px 3px var(--text-halo);
+}
+
+:root {
+  --text-halo: rgba(255, 255, 255, 0.9);
+}
+
+:root[data-scheme="dark"] {
+  --text-halo: rgba(0, 0, 0, 0.85);
 }
