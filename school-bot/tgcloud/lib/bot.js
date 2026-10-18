@@ -66,10 +66,11 @@ export const COMMANDS = [
 export const DESCRIPTION = [
   `📚 Расписание уроков ${TITLE}`,
   '',
+  '👉 Нажми «Старт», а потом синюю кнопку «Расписание» слева внизу — там твои уроки.',
+  '',
   '• 10а и 10б, профили сэ, тех, ен, гум — выбери свои',
   '• уроки на сегодня и завтра — со временем и кабинетом',
-  '• расписание на неделю и звонки',
-  '• домашние задания класса и профильной группы',
+  '• расписание на неделю, звонки и домашние задания',
 ].join('\n');
 
 export const SHORT_DESCRIPTION = `📅 Уроки 10а и 10б: сегодня, завтра, неделя, звонки и ДЗ`;
@@ -99,6 +100,36 @@ const HELP_TEXT = [
   '',
   '<i>Время — якутское.</i>',
 ].join('\n');
+
+// Первое сообщение (/start): главное — показать синюю кнопку «Расписание» (MENU_BUTTON),
+// иначе не найдут. Под сообщением — такая же кнопка, открывающая приложение.
+const WELCOME_TEXT = [
+  '👋 <b>Привет!</b>',
+  '',
+  '👇 Нажми синюю кнопку <b>«Расписание»</b> слева внизу, рядом с полем для сообщения, —',
+  'там все твои уроки. Или кнопку под этим сообщением.',
+  '',
+  'В первый раз выбери свой класс (10а или 10б) и профиль — дальше приложение запомнит.',
+  '',
+  '<i>Можно и прямо в чате: /today — уроки на сегодня, /help — все команды.</i>',
+].join('\n');
+
+const WELCOME_GROUP_TEXT = [
+  `👋 <b>Привет! Я бот расписания ${TITLE}</b>`,
+  '',
+  'Удобнее всего — в личке со мной: открой мой профиль, нажми «Старт», а потом синюю кнопку <b>«Расписание»</b> слева внизу.',
+  '',
+  'А здесь: /class — выбрать класс, /today — уроки на сегодня, /help — все команды.',
+].join('\n');
+
+/** Кнопки web_app работают только в личке, в группе Telegram их не примет. */
+function welcome(message) {
+  if (message.chat?.type !== 'private') return { text: WELCOME_GROUP_TEXT };
+  return {
+    text: WELCOME_TEXT,
+    reply_markup: { inline_keyboard: [[{ text: '📅 Открыть расписание', web_app: { url: MINI_APP_URL } }]] },
+  };
+}
 
 // --- Кнопки под сообщением ---
 // callback_data: 'c:<вариант>' — выбрать класс и профиль ('c:a-gum');
@@ -268,7 +299,7 @@ async function homeworkCommand(kind, cls, args, message, nowMs, store) {
 
 // (ctx) → ответ; ctx = { now, store, message, args, cls }. needsClass — без выбранного класса не работает.
 const ACTIONS = {
-  start: async () => ({ text: HELP_TEXT, reply_markup: KEYBOARD }),
+  start: async ({ message }) => welcome(message),
   help: async () => ({ text: HELP_TEXT, reply_markup: KEYBOARD }),
   class: async ({ cls }) => classPicker(cls),
   bells: async () => ({ text: formatBells() }),
@@ -315,12 +346,7 @@ export async function replyTo(message, nowMs = Date.now(), store = NO_STORE, pre
   }
   const saved = await prefs.get(message.chat?.id);
   const cls = isClass(saved) ? saved : null;
-  if (!cls && (NEEDS_CLASS.has(action) || action === 'start')) {
-    const intro = action === 'start'
-      ? `👋 <b>Привет! Я бот расписания ${TITLE}</b>\n\nСначала выбери свой класс и профиль — покажу твои уроки.`
-      : '🏫 Сначала выбери свой класс и профиль:';
-    return classPicker(null, intro);
-  }
+  if (!cls && NEEDS_CLASS.has(action)) return classPicker(null, '🏫 Сначала выбери свой класс и профиль:');
   return ACTIONS[action]({ now: nowMs, store, message, args: commandArgs(message.text), cls });
 }
 

@@ -123,10 +123,16 @@ test('бот: сначала выбор класса, потом уроки', as
   const now = at('2026-10-14', 9, 45);
 
   const start = await replyTo({ text: '/start', chat }, now, undefined, prefs);
-  assert.match(start.text, /выбери свой класс/);
-  assert.equal(start.reply_markup.inline_keyboard.length, 2);
-  assert.equal(start.reply_markup.inline_keyboard[0][3].callback_data, 'c:a-gum');
-  assert.equal(start.reply_markup.inline_keyboard[1][0].text, '10б сэ');
+  assert.match(start.text, /синюю кнопку <b>«Расписание»<\/b>/);
+  assert.equal(start.reply_markup.inline_keyboard[0][0].web_app.url, 'https://app8734400455.tgcloud.ai/');
+  const inGroup = await replyTo({ text: '/start', chat: { id: -5, type: 'supergroup' } }, now, undefined, prefs);
+  assert.match(inGroup.text, /в личке/);
+  assert.equal(inGroup.reply_markup, undefined); // web_app-кнопки в группах запрещены
+
+  const picker = await replyTo({ text: '/class', chat }, now, undefined, prefs);
+  assert.equal(picker.reply_markup.inline_keyboard.length, 2);
+  assert.equal(picker.reply_markup.inline_keyboard[0][3].callback_data, 'c:a-gum');
+  assert.equal(picker.reply_markup.inline_keyboard[1][0].text, '10б сэ');
 
   const blocked = await replyTo({ text: BUTTONS.today, chat }, now, undefined, prefs);
   assert.match(blocked.text, /Сначала выбери/);
