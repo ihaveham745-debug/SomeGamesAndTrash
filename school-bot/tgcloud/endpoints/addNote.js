@@ -1,7 +1,7 @@
 // POST /api/addNote — новое задание (due — дата урока) или заметка к предмету (due = null).
 
 import { EndpointError } from 'sdk';
-import { cleanText, validateNote } from '../lib/homework.js';
+import { cleanText, groupOf, validateNote } from '../lib/homework.js';
 import { store } from '../lib/notes.js';
 
 export default async function (input, ctx) {
@@ -13,5 +13,5 @@ export default async function (input, ctx) {
   if (error) throw new EndpointError(error, { code: 'INVALID' });
 
   const authorName = [user.first_name, user.last_name && `${user.last_name[0]}.`].filter(Boolean).join(' ') || user.username || null;
-  return { note: await store.add({ ...note, authorId: user.id, authorName }) };
+  return { note: await store.add({ ...note, cls: groupOf(note.cls, note.subject), authorId: user.id, authorName }) };
 }

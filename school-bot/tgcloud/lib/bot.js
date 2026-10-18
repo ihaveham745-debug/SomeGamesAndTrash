@@ -3,18 +3,19 @@
 // Ответ — { text, reply_markup }: текст в parse_mode HTML и клавиатура к нему.
 //
 // Класс чата (lib/prefs.js в боте, объект в тестах):
-//   prefs.get(chatId) → 'se' | 'tech' | 'en' | 'gum' | null;  prefs.set(chatId, cls).
+//   prefs.get(chatId) → 'a-se' … 'b-gum' | null;  prefs.set(chatId, cls).
 // Задания и заметки (lib/notes.js в боте, массив в тестах):
-//   store.range(cls, from, to) — записи класса с due в этих датах ('ГГГГ-ММ-ДД' включительно);
-//   store.upcoming(cls, from)  — задания класса с due >= from и все его заметки (due = null);
-//   store.add(note)            — сохранить запись.
+//   store.range(groups, from, to) — записи групп с due в этих датах ('ГГГГ-ММ-ДД' включительно);
+//   store.upcoming(groups, from)  — задания групп с due >= from и все их заметки (due = null);
+//   store.add(note)               — сохранить запись (note.cls — группа урока).
+// Группы варианта — его класс и профиль (homework.groupsOf).
 
 import {
   DAY_SHORT, SCHOOL_DAYS, addDays, dayMonth, ddmm, escapeHtml, formatBells, formatDay, formatWeek,
   isClass, isoDate, mondayOf, parseDate, schoolDay, stepDay, today, weekday,
 } from './schedule.js';
-import { CLASSES, MINI_APP_URL, TITLE, classLabel } from './school.js';
-import { cleanText, findSubject, nextLessonDate, validateNote } from './homework.js';
+import { CLASSES, MINI_APP_URL, PROFILES, TITLE, classLabel } from './school.js';
+import { cleanText, findSubject, groupOf, groupsOf, nextLessonDate, validateNote } from './homework.js';
 
 export const NO_STORE = {
   range: async () => [],
@@ -63,12 +64,12 @@ export const COMMANDS = [
 
 // Профиль бота: DESCRIPTION видно в пустом чате до /start, SHORT_DESCRIPTION — в профиле.
 export const DESCRIPTION = [
-  `📚 Расписание уроков: ${TITLE}`,
+  `📚 Расписание уроков ${TITLE}`,
   '',
-  `• ${Object.keys(CLASSES).map(classLabel).join(', ')} — выбери свой профиль`,
+  '• 10а и 10б, профили сэ, тех, ен, гум — выбери свои',
   '• уроки на сегодня и завтра — со временем и кабинетом',
   '• расписание на неделю и звонки',
-  '• домашние задания класса',
+  '• домашние задания класса и профильной группы',
 ].join('\n');
 
 export const SHORT_DESCRIPTION = `📅 Уроки 10а и 10б: сегодня, завтра, неделя, звонки и ДЗ`;
@@ -100,7 +101,8 @@ const HELP_TEXT = [
 ].join('\n');
 
 // --- Кнопки под сообщением ---
-// callback_data: 'c:<класс>' — выбрать класс; 'd:<класс>:ГГГГ-ММ-ДД' — день, 'w:<класс>:ГГГГ-ММ-ДД' — неделя.
+// callback_data: 'c:<вариант>' — выбрать класс и профиль ('c:a-gum');
+// 'd:<вариант>:ГГГГ-ММ-ДД' — день, 'w:<вариант>:ГГГГ-ММ-ДД' — неделя.
 // Вместо даты может стоять 'today' — день нажатия, а не отправки.
 
 const TODAY = 'today';
@@ -113,19 +115,20 @@ function shortDate(date) {
   return `${DAY_SHORT[weekday(date) - 1]} ${ddmm(date)}`;
 }
 
-/** Кнопки выбора класса: по строке на класс. */
+/** Кнопки выбора: строка 10а и строка 10б, в каждой — 4 профиля. */
 export function classKeyboard(current = null) {
-  return {
-    inline_keyboard: Object.entries(CLASSES).map(([id, c]) => [{
-      text: `${id === current ? '✅ ' : ''}${c.grade} · ${c.profile}`,
-      callback_data: `c:${id}`,
-    }]),
-  };
+  const rows = {};
+  for (const [id, c] of Object.entries(CLASSES)) {
+    (rows[c.gradeKey] ??= []).push({ text: `${id === current ? '✅' : ''}${c.grade} ${c.short}`, callback_data: `c:${id}` });
+  }
+  return { inline_keyboard: Object.values(rows) };
 }
+
+const PROFILE_HELP = Object.values(PROFILES).map((p) => `<b>${p.short}</b> — ${p.name}`).join('\n');
 
 function classPicker(cls, intro = '🏫 <b>Выбери свой класс и профиль</b>') {
   const now = cls ? `\n\nСейчас: <b>${escapeHtml(classLabel(cls))}</b>` : '';
-  return { text: `${intro}${now}`, reply_markup: classKeyboard(cls) };
+  return { text: `${intro}\n\n${PROFILE_HELP}${now}`, reply_markup: classKeyboard(cls) };
 }
 
 function dayKeyboard(cls, date, nowMs) {
@@ -162,13 +165,13 @@ function weekKeyboard(cls, date, nowMs) {
 }
 
 async function dayView(cls, date, nowMs, store) {
-  const notes = await store.range(cls, isoDate(date), isoDate(date));
+  const notes = await store.range(groupsOf(cls), isoDate(date), isoDate(date));
   return { text: formatDay(cls, date, nowMs, notes), reply_markup: dayKeyboard(cls, date, nowMs) };
 }
 
 async function weekView(cls, date, nowMs, store) {
   const monday = mondayOf(date);
-  const notes = await store.range(cls, isoDate(monday), isoDate(addDays(monday, 6)));
+  const notes = await store.range(groupsOf(cls), isoDate(monday), isoDate(addDays(monday, 6)));
   return { text: formatWeek(cls, date, nowMs, notes), reply_markup: weekKeyboard(cls, date, nowMs) };
 }
 
@@ -191,7 +194,7 @@ function noteLine(n) {
 
 /** Список: задания с сегодняшнего дня по датам, потом заметки по предметам. */
 async function homeworkList(cls, nowMs, store) {
-  const all = await store.upcoming(cls, isoDate(today(nowMs)));
+  const all = await store.upcoming(groupsOf(cls), isoDate(today(nowMs)));
   const tasks = all.filter((n) => n.due).sort((a, b) => a.due.localeCompare(b.due) || a.id - b.id);
   const notes = all.filter((n) => !n.due).sort((a, b) => a.subject.localeCompare(b.subject, 'ru') || a.id - b.id);
 
@@ -249,7 +252,7 @@ async function homeworkCommand(kind, cls, args, message, nowMs, store) {
   if (error) return { text: `🤔 ${error === 'Пустой текст' ? 'А что задали? Текст после двоеточия пустой.' : escapeHtml(error)}\n\n${USAGE[kind]}` };
 
   try {
-    await store.add({ cls, subject: found.subject, due, text, authorId: message.from?.id ?? 0, authorName: authorName(message.from) });
+    await store.add({ cls: groupOf(cls, found.subject), subject: found.subject, due, text, authorId: message.from?.id ?? 0, authorName: authorName(message.from) });
   } catch (err) {
     console.error('store.add failed', err);
     return { text: '😕 Не получилось сохранить, попробуй ещё раз чуть позже.' };
@@ -326,14 +329,14 @@ export async function replyTo(message, nowMs = Date.now(), store = NO_STORE, pre
  * { view, chosen } — chosen: выбран класс (тогда к ответу стоит прислать клавиатуру).
  */
 export async function viewFor(data, chatId, nowMs = Date.now(), store = NO_STORE, prefs = memoryPrefs()) {
-  const pick = /^c:([a-z]+)$/.exec(data ?? '');
+  const pick = /^c:([a-z]+-[a-z]+)$/.exec(data ?? '');
   if (pick) {
     if (!isClass(pick[1])) return null;
     await prefs.set(chatId, pick[1]);
     const view = await dayView(pick[1], schoolDay(today(nowMs)), nowMs, store);
     return { view, chosen: pick[1] };
   }
-  const match = /^([dw]):([a-z]+):(today|\d{4}-\d{2}-\d{2})$/.exec(data ?? '');
+  const match = /^([dw]):([a-z]+-[a-z]+):(today|\d{4}-\d{2}-\d{2})$/.exec(data ?? '');
   if (!match || !isClass(match[2])) return null;
   const date = match[3] === TODAY ? today(nowMs) : parseDate(match[3]);
   if (match[3] !== TODAY && isoDate(date) !== match[3]) return null; // 2026-02-31 и подобное
@@ -343,5 +346,5 @@ export async function viewFor(data, chatId, nowMs = Date.now(), store = NO_STORE
 
 /** Сообщение после выбора класса — с обычной клавиатурой внизу. */
 export function chosenText(cls) {
-  return `✅ Класс: <b>${escapeHtml(classLabel(cls))}</b> (${escapeHtml(CLASSES[cls].profile)}).\nСменить — /class. Что умею — /help`;
+  return `✅ <b>${escapeHtml(classLabel(cls))}</b>: ${escapeHtml(CLASSES[cls].grade)}, ${escapeHtml(CLASSES[cls].profile)} профиль.\nСменить — /class. Что умею — /help`;
 }

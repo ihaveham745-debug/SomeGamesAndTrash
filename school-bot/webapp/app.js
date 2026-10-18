@@ -1,4 +1,4 @@
-// Mini App: расписание уроков выбранного класса (10а сэ / тех, 10б ен / гум).
+// Mini App: расписание уроков выбранного класса и профиля (10а / 10б × сэ / тех / ен / гум).
 // Расписание и расчёты — те же модули, что у бота: при сборке они копируются в dist/lib/.
 
 import {
@@ -14,7 +14,7 @@ const tg = window.Telegram?.WebApp;
 const inTelegram = Boolean(tg) && tg.platform !== 'unknown';
 const $ = (id) => document.getElementById(id);
 
-const CLASS_KEY = 'school.class';
+const CLASS_KEY = 'school.class.v2'; // v1 хранил только профиль ('gum')
 const state = { view: 'day', date: firstDay(), cls: savedClass(), notes: [], me: null };
 
 // Записывать и удалять задания можно только из Telegram: сервер проверяет, кто это.
@@ -265,7 +265,7 @@ function tasksHtml() {
   const notes = state.notes.filter((n) => !n.due).sort((a, b) => a.subject.localeCompare(b.subject, 'ru') || a.id - b.id);
 
   const head = `<div class="day-head"><h2 class="day-title">Задания</h2>
-    <p class="summary">Общие для ${esc(classLabel(state.cls))} — видят все в классе</p></div>
+    <p class="summary">${esc(classLabel(state.cls))} · общие уроки — для всего класса, профильные — для всей группы</p></div>
     ${canWrite ? `<div class="actions">
       <button class="action glass press" type="button" data-add="hw">${ICON.plus}Задание</button>
       <button class="action glass press" type="button" data-add="note">${ICON.plus}Заметка</button>
@@ -317,13 +317,19 @@ function openSheet(html) {
 }
 
 function openClassPicker() {
-  const options = Object.entries(CLASSES).map(([id, c]) => `<button type="button" class="class-option press${id === state.cls ? ' current' : ''}" data-pick="${id}">
-      <span class="grade">${esc(c.grade)}</span>
-      <span class="profile">${esc(cap(c.profile))}<small>профиль «${esc(c.short)}»</small></span>
-    </button>`).join('');
+  const grades = {};
+  for (const [id, c] of Object.entries(CLASSES)) {
+    (grades[c.grade] ??= []).push(`<button type="button" class="class-option press${id === state.cls ? ' current' : ''}" data-pick="${id}">
+      <span class="short">${esc(c.short)}</span><small>${esc(c.profile)}</small>
+    </button>`);
+  }
+  const sections = Object.entries(grades).map(([grade, options]) => `<div class="class-grade">
+      <div class="class-grade-name">${esc(grade)}</div>
+      <div class="class-list">${options.join('')}</div>
+    </div>`).join('');
   const root = openSheet(`<div class="sheet glass blur">
     <div class="sheet-title">Твой класс и профиль</div>
-    <div class="class-list">${options}</div>
+    ${sections}
     ${state.cls ? '<div class="sheet-buttons"><button class="btn press" type="button" data-close>Отмена</button></div>' : ''}
   </div>`);
   root.addEventListener('click', (e) => {

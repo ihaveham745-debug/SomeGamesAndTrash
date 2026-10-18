@@ -1182,18 +1182,29 @@ textarea.field {
   transform: rotate(90deg);
 }
 
-.class-list {
+.class-grade {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
+.class-grade-name {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.class-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .class-option {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 12px 14px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
   border-radius: 18px;
   text-align: left;
   background: color-mix(in srgb, var(--label) 6%, transparent);
@@ -1203,21 +1214,13 @@ textarea.field {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
-.class-option .grade {
-  font-size: 20px;
+.class-option .short {
+  font-size: 18px;
   font-weight: 700;
-  min-width: 46px;
 }
 
-.class-option .profile {
-  display: flex;
-  flex-direction: column;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.class-option .profile small {
-  font-size: 13px;
+.class-option small {
+  font-size: 12px;
   font-weight: 500;
   color: var(--label-2);
 }

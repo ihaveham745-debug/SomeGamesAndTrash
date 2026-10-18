@@ -3,9 +3,10 @@
 //
 // Запись (note): { id, cls, subject, due, text, authorId, authorName }.
 // due — дата урока 'ГГГГ-ММ-ДД', к которому задано; у заметки к предмету due = null.
-// Записи у каждого класса (профиля) свои.
+// cls у записи — группа урока: 'a' / 'b' (весь класс) или профиль ('se', 'gum', …).
+// Так ДЗ по профильному уроку видят все из этой группы — и из 10а, и из 10б.
 
-import { TIMETABLE } from './school.js';
+import { CLASSES, TIMETABLE } from './school.js';
 import { addDays, bell, isClass, lessonsFor, minutesNow, today } from './schedule.js';
 
 export const MAX_NOTE_LENGTH = 1000;
@@ -95,6 +96,17 @@ export function nextLessonDate(cls, subject, nowMs = Date.now(), horizonDays = 1
     if (has) return day;
   }
   return null;
+}
+
+/** Группы, чьи записи видит вариант: его класс и его профиль. */
+export function groupsOf(cls) {
+  return isClass(cls) ? [CLASSES[cls].gradeKey, CLASSES[cls].profileKey] : [];
+}
+
+/** Чей урок этот предмет у варианта: 'a' / 'b' или профиль. null — такого предмета нет. */
+export function groupOf(cls, subject) {
+  if (!isClass(cls)) return null;
+  return Object.values(TIMETABLE[cls]).flat().find((p) => p.subject === subject)?.group ?? null;
 }
 
 /** Задания к уроку: тот же предмет и та же дата. */
