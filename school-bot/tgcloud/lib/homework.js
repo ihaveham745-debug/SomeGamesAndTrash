@@ -7,7 +7,7 @@
 // Так ДЗ по профильному уроку видят все из этой группы — и из 10а, и из 10б.
 
 import { CLASSES, TIMETABLE } from './school.js';
-import { addDays, bell, isClass, lessonsFor, minutesNow, today } from './schedule.js';
+import { addDays, bell, fileLabel, isClass, lessonsFor, minutesNow, today } from './schedule.js';
 
 export const MAX_NOTE_LENGTH = 1000;
 
@@ -114,18 +114,43 @@ export function homeworkFor(notes, iso, subject) {
   return notes.filter((n) => n.due === iso && n.subject === subject);
 }
 
+// --- Файлы ---
+// К записи можно прикрепить один файл. Сам файл лежит в Telegram, в базе — только file_id.
+// fileKind — как Telegram его хранит: 'photo', 'document', 'video', 'animation', 'audio', 'voice'
+// (от этого зависит, каким методом отправлять обратно).
+
+export const MAX_FILE_MB = 10;
+export { fileLabel };
+
+const KINDS = ['document', 'video', 'animation', 'audio', 'voice'];
+
+/** Файл из сообщения: { fileId, fileKind, fileName } или null. У фото берём самый большой размер. */
+export function fileFromMessage(message) {
+  if (message?.photo?.length) return { fileId: message.photo.at(-1).file_id, fileKind: 'photo', fileName: 'фото' };
+  const kind = KINDS.find((k) => message?.[k]?.file_id);
+  if (!kind) return null;
+  const f = message[kind];
+  return { fileId: f.file_id, fileKind: kind, fileName: f.file_name || null };
+}
+
+/** Видит ли зритель запись: общая — если она его класса/профиля, личная — только автор. */
+export function canSee(note, groups, viewer) {
+  if (!note || !groups.includes(note.cls)) return false;
+  return !note.private || (viewer !== null && note.authorId === viewer);
+}
+
 /** Текст записи: без пробелов по краям, не больше двух пустых строк подряд. '' — пусто. */
 export function cleanText(text) {
   return String(text ?? '').replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** Ошибка в записи или null, если всё хорошо. */
-export function validateNote({ cls, subject, due, text }) {
+export function validateNote({ cls, subject, due, text, fileId = null }) {
   if (!isClass(cls)) return 'сначала выбери класс';
   if (!subjectsOf(cls).includes(subject)) return 'нет такого предмета в расписании';
   if (due !== null && due !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(due)) return 'неверная дата';
   const clean = cleanText(text);
-  if (!clean) return 'пустой текст';
+  if (!clean && !fileId) return 'пустой текст'; // с файлом текст можно не писать
   if (clean.length > MAX_NOTE_LENGTH) return `слишком длинно: больше ${MAX_NOTE_LENGTH} символов`;
   return null;
 }

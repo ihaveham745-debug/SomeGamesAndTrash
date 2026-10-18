@@ -193,14 +193,28 @@ function nowLine(status, minutes) {
   return 'на сегодня уроки закончились';
 }
 
+const FILE_KIND_LABELS = { photo: 'фото', video: 'видео', animation: 'гифка', audio: 'аудио', voice: 'голосовое' };
+
+/** Подпись прикреплённого файла: 'фото', 'видео', 'файл: конспект.pdf'; '' — файла нет. */
+export function fileLabel(note) {
+  if (!note?.fileId) return '';
+  return FILE_KIND_LABELS[note.fileKind] ?? `файл: ${note.fileName || 'без имени'}`;
+}
+
+/** Текст записи и пометка о файле: 'читать главу 3 [фото]'. */
+function hwBody(n) {
+  const file = fileLabel(n);
+  return [n.text && escapeHtml(n.text), file && `<i>[${escapeHtml(file)}]</i>`].filter(Boolean).join(' ');
+}
+
 function lessonCard(p, isNow, homework = []) {
   const head = [`${p.n} урок`, BELLS[p.n] && `<b>${BELLS[p.n]}</b>`, isNow && '← сейчас']
     .filter(Boolean)
     .join(' ');
   const title = `<b>${escapeHtml(p.subject)}</b>` + (p.type ? ` · <i>${escapeHtml(p.type)}</i>` : '');
   const hw = homework.map((n) => (n.private
-    ? `дз: ${escapeHtml(n.text)} <i>— только ты</i>`
-    : `дз: ${escapeHtml(n.text)}${n.authorName ? ` <i>— ${escapeHtml(n.authorName)}</i>` : ''}`));
+    ? `дз: ${hwBody(n)} <i>— только ты</i>`
+    : `дз: ${hwBody(n)}${n.authorName ? ` <i>— ${escapeHtml(n.authorName)}</i>` : ''}`));
   return `<blockquote>${[head, title, ...(p.room ? [`${escapeHtml(roomText(p.room))}`] : []), ...hw].join('\n')}</blockquote>`;
 }
 
@@ -220,7 +234,7 @@ export function formatDay(cls, date, nowMs = Date.now(), notes = []) {
   if (!inYear(date)) return `${header}\n\n${outOfYear(date)}`;
 
   const lessons = lessonsFor(cls, date);
-  if (lessons.length === 0) return `${header}\n\nуроков нет — отдыхаем `;
+  if (lessons.length === 0) return `${header}\n\nуроков нет — отдыхаем`;
 
   const first = bell(lessons[0].n);
   const last = bell(lessons[lessons.length - 1].n);

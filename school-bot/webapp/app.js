@@ -7,7 +7,9 @@ import {
   parseDate, schoolDay, stepDay, today, weekday,
 } from './lib/schedule.js';
 import { CLASSES, classLabel, groupLabel } from './lib/school.js';
-import { MAX_NOTE_LENGTH, cleanText, groupOf, homeworkFor, nextLessonDate, subjectsOf } from './lib/homework.js';
+import {
+  MAX_FILE_MB, MAX_NOTE_LENGTH, cleanText, fileLabel, groupOf, homeworkFor, nextLessonDate, subjectsOf,
+} from './lib/homework.js';
 
 const tg = window.Telegram?.WebApp;
 // telegram-web-app.js ставит platform 'unknown', если страницу открыли не в Telegram.
@@ -86,6 +88,7 @@ function firstDay() {
 
 // Значки в духе SF Symbols.
 const ICON = {
+  clip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m20 11.5-7.8 7.8a5 5 0 0 1-7.1-7.1l8.2-8.2a3.4 3.4 0 0 1 4.8 4.8l-8.1 8.1a1.7 1.7 0 0 1-2.4-2.4l7.4-7.4"/></svg>',
   pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0C18.5 15.4 12 21 12 21z"/><circle cx="12" cy="10" r="2.3"/></svg>',
   clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12.5 4 4 8-9"/></svg>',
@@ -156,7 +159,8 @@ function noteItemHtml(n) {
   const mine = state.me !== null && n.authorId === state.me;
   const by = n.private ? 'только ты' : n.authorName;
   return `<div class="hw-item${n.private ? ' private' : ''}">
-    <div class="hw-body"><div class="hw-text">${esc(n.text)}</div>${by ? `<div class="hw-by">${esc(by)}</div>` : ''}</div>
+    <div class="hw-body">${n.text ? `<div class="hw-text">${esc(n.text)}</div>` : ''}${n.fileId
+      ? `<button class="hw-file press" type="button" data-file="${n.id}">${ICON.clip}<span>${esc(fileLabel(n))}</span></button>` : ''}${by ? `<div class="hw-by">${esc(by)}</div>` : ''}</div>
     ${mine ? `<button class="hw-del press" type="button" data-del="${n.id}" aria-label="удалить">${ICON.trash}</button>` : ''}
   </div>`;
 }
@@ -351,6 +355,11 @@ function openComposer({ kind, subject = null, due = null }) {
     <div class="sheet-due"></div>
     <textarea class="field" name="text" rows="4" maxlength="${MAX_NOTE_LENGTH}"
       placeholder="${kind === 'hw' ? 'что задали? например: №5–10, стр. 42' : 'например: формулы на стр. 12'}"></textarea>
+    <div class="attach">
+      <button class="attach-btn press" type="button" data-pick-file>${ICON.clip}<span>прикрепить файл</span></button>
+      <button class="attach-clear press" type="button" data-clear-file hidden aria-label="убрать файл">×</button>
+      <input type="file" name="file" hidden>
+    </div>
     <label class="private-toggle">
       <span><b>только мне</b><small class="who"></small></span>
       <input type="checkbox" name="private" role="switch">
@@ -392,18 +401,43 @@ function openComposer({ kind, subject = null, due = null }) {
   form.private.addEventListener('change', updateWho);
   form.text.focus();
 
+  // Файл: один на запись, до MAX_FILE_MB.
+  const error = root.querySelector('.sheet-error');
+  const pickLabel = root.querySelector('[data-pick-file] span');
+  const clearBtn = root.querySelector('[data-clear-file]');
+  const fileInput = form.file;
+  const showFile = () => {
+    const f = fileInput.files[0];
+    pickLabel.textContent = f ? f.name : 'прикрепить файл';
+    clearBtn.hidden = !f;
+  };
+  root.querySelector('[data-pick-file]').addEventListener('click', () => fileInput.click());
+  clearBtn.addEventListener('click', () => { fileInput.value = ''; showFile(); });
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files[0];
+    if (f && f.size > MAX_FILE_MB * 1024 * 1024) {
+      error.textContent = `файл больше ${MAX_FILE_MB} мб — пришли его боту в чат с подписью /dz предмет:`;
+      fileInput.value = '';
+    } else {
+      error.textContent = '';
+    }
+    showFile();
+  });
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const subj = fixed ? subject : form.subject.value;
     const text = cleanText(form.text.value);
-    const error = root.querySelector('.sheet-error');
+    const picked = fileInput.files[0];
     if (!subj) return void (error.textContent = 'выбери предмет');
-    if (!text) return void (error.textContent = kind === 'hw' ? 'напиши, что задали' : 'пустая заметка');
+    if (!text && !picked) return void (error.textContent = kind === 'hw' ? 'напиши, что задали, или прикрепи файл' : 'пустая заметка');
     const save = form.querySelector('[type="submit"]');
     save.disabled = true;
+    if (picked) save.textContent = 'загружаю…';
     try {
+      const file = picked ? { name: picked.name, type: picked.type, data: await readBase64(picked) } : undefined;
       const { note } = await callBot('addNote', {
-        cls, subject: subj, due: kind === 'hw' ? currentDue : null, text, private: form.private.checked,
+        cls, subject: subj, due: kind === 'hw' ? currentDue : null, text, private: form.private.checked, file,
       });
       if (cls === state.cls) state.notes.push(note);
       try { tg.HapticFeedback?.notificationOccurred('success'); } catch { /* старый клиент */ }
@@ -412,8 +446,65 @@ function openComposer({ kind, subject = null, due = null }) {
     } catch (err) {
       error.textContent = err?.message || 'не получилось сохранить';
       save.disabled = false;
+      save.textContent = 'сохранить';
     }
   });
+}
+
+/** Содержимое файла в base64 (без префикса data:…). */
+function readBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
+    reader.onerror = () => reject(new Error('не получилось прочитать файл'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function notify(text) {
+  if (tg?.showAlert && inTelegram) tg.showAlert(text);
+  else window.alert(text);
+}
+
+async function sendFileToChat(note) {
+  try {
+    await callBot('sendNoteFile', { id: note.id, cls: state.cls });
+    try { tg.HapticFeedback?.notificationOccurred('success'); } catch { /* старый клиент */ }
+    notify('отправил в чат с ботом');
+  } catch (err) {
+    notify(err?.message || 'не получилось отправить');
+  }
+}
+
+/** Фото — превью прямо в приложении, остальное — бот присылает в чат. */
+async function openFile(id) {
+  const note = state.notes.find((n) => n.id === id);
+  if (!note?.fileId || !canWrite) return;
+  if (note.fileKind !== 'photo') {
+    const ok = await new Promise((resolve) => {
+      if (tg?.showConfirm && inTelegram) tg.showConfirm(`прислать «${fileLabel(note)}» в чат с ботом?`, resolve);
+      else resolve(window.confirm(`прислать «${fileLabel(note)}» в чат с ботом?`));
+    });
+    if (ok) sendFileToChat(note);
+    return;
+  }
+  const root = openSheet(`<div class="sheet glass blur">
+    <div class="sheet-title">${esc(note.subject)}${note.text ? ` · ${esc(note.text)}` : ''}</div>
+    <div class="photo-box"><span class="muted">загружаю фото…</span></div>
+    <div class="sheet-buttons">
+      <button class="btn press" type="button" data-close>закрыть</button>
+      <button class="btn primary press" type="button" data-to-chat>в чат</button>
+    </div>
+  </div>`);
+  root.querySelector('[data-to-chat]').addEventListener('click', () => sendFileToChat(note));
+  try {
+    const { type, data } = await callBot('noteFile', { id, cls: state.cls });
+    const box = root.querySelector('.photo-box');
+    if (box) box.innerHTML = `<img alt="" src="data:${type};base64,${data}">`;
+  } catch (err) {
+    const box = root.querySelector('.photo-box');
+    if (box) box.innerHTML = `<span class="muted">${esc(err?.message || 'не получилось загрузить')} — нажми «в чат»</span>`;
+  }
 }
 
 function closeSheet() {
@@ -510,9 +601,10 @@ function go(date, view = state.view) {
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('.sheet-backdrop')) return;
-  const el = e.target.closest('[data-add], [data-del], [data-date], [data-view], #prev-week, #next-week, #to-today, #class-btn');
+  const el = e.target.closest('[data-add], [data-del], [data-file], [data-date], [data-view], #prev-week, #next-week, #to-today, #class-btn');
   if (!el) return;
-  if (el.dataset.add) openComposer({ kind: el.dataset.add, subject: el.dataset.subject, due: el.dataset.due });
+  if (el.dataset.file) openFile(Number(el.dataset.file));
+  else if (el.dataset.add) openComposer({ kind: el.dataset.add, subject: el.dataset.subject, due: el.dataset.due });
   else if (el.dataset.del) deleteNote(Number(el.dataset.del));
   else if (el.dataset.date) go(parseDate(el.dataset.date), 'day');
   else if (el.dataset.view) go(state.date, el.dataset.view);

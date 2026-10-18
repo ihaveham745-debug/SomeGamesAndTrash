@@ -230,3 +230,53 @@ test('бот: /my — личное дз, видит только автор и �
   const thuOther = await viewFor('d:b-gum:2026-10-15', 8, now, store, prefs);
   assert.ok(!thuOther.view.text.includes('повторить термины'));
 });
+
+test('бот: фото и файлы к дз — подписью /dz, кнопкой бот присылает обратно', async () => {
+  const prefs = memoryPrefs();
+  await prefs.set(7, 'a-gum');
+  await prefs.set(8, 'b-gum');
+  await prefs.set(9, 'a-se');
+  const saved = [];
+  const visible = (n, viewer) => !n.private || n.authorId === viewer;
+  const store = {
+    range: async (groups, from, to, viewer) => saved.filter((n) => groups.includes(n.cls) && visible(n, viewer) && n.due >= from && n.due <= to),
+    upcoming: async (groups, from, viewer) => saved.filter((n) => groups.includes(n.cls) && visible(n, viewer)),
+    add: async (n) => saved.push({ id: saved.length + 1, ...n }),
+    get: async (id) => saved.find((n) => n.id === id) ?? null,
+  };
+  const now = at('2026-10-14', 10);
+  const photo = [{ file_id: 'small' }, { file_id: 'BIG' }];
+  const msg = (chat, extra) => ({ chat: { id: chat, type: 'private' }, from: { id: chat, first_name: 'Аня' }, ...extra });
+
+  // фото с подписью — текст можно не писать
+  const res = await replyTo(msg(7, { photo, caption: '/dz стил:' }), now, store, prefs);
+  assert.match(res.text, /записал дз.*стилистика.*фото прикреплено/s);
+  assert.deepEqual([saved[0].fileId, saved[0].fileKind, saved[0].text], ['BIG', 'photo', '']);
+  await replyTo(msg(7, { document: { file_id: 'DOC', file_name: 'конспект.pdf' }, caption: '/my лит: мой конспект' }), now, store, prefs);
+  assert.deepEqual([saved[1].fileKind, saved[1].fileName, saved[1].private], ['document', 'конспект.pdf', true]);
+
+  // без команды в подписи — подсказка, ничего не сохраняем
+  assert.match((await replyTo(msg(7, { photo }), now, store, prefs)).text, /подпиши его командой/);
+  assert.match((await replyTo(msg(7, { photo, caption: '/dz' }), now, store, prefs)).text, /подпиши его командой/);
+  assert.equal(saved.length, 2);
+
+  // в списке — пометка и кнопки «фото — …» / «файл — …»
+  const list = await replyTo(msg(7, { text: '/dz' }), now, store, prefs);
+  assert.match(list.text, /<i>\[фото\]<\/i>/);
+  assert.match(list.text, /мой конспект <i>\[файл: конспект\.pdf\]<\/i> <i>— только ты<\/i>/);
+  const buttons = list.reply_markup.inline_keyboard.map((r) => r[0]);
+  assert.deepEqual(buttons.map((b) => b.callback_data), ['f:1', 'f:2']);
+  assert.equal(buttons[0].text, 'фото — стилистика 15.10');
+
+  // кнопка: свой — присылаем; чужой профиль и чужое личное — нельзя
+  assert.equal((await viewFor('f:1', 7, now, store, prefs)).send.fileId, 'BIG');
+  assert.equal((await viewFor('f:1', 8, now, store, prefs)).send.id, 1); // 10б гум — та же группа
+  assert.deepEqual(await viewFor('f:1', 9, now, store, prefs), { denied: true }); // 10а сэ
+  assert.deepEqual(await viewFor('f:2', 8, now, store, prefs), { denied: true }); // личное
+  assert.deepEqual(await viewFor('f:99', 7, now, store, prefs), { denied: true });
+
+  // в расписании дня у урока — пометка и кнопка файла над стрелками
+  const thu = await viewFor('d:a-gum:2026-10-15', 7, now, store, prefs);
+  assert.match(thu.view.text, /дз: <i>\[фото\]<\/i> <i>— Аня<\/i>/);
+  assert.equal(thu.view.reply_markup.inline_keyboard[0][0].callback_data, 'f:1');
+});

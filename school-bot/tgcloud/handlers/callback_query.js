@@ -1,18 +1,30 @@
 // handlers/callback_query — нажатия на кнопки под сообщениями: выбор класса, ‹ ›, «Вся неделя».
 // Новое сообщение не шлём — меняем текст того, под которым нажали
-// (кроме выбора класса: тогда ещё присылаем обычную клавиатуру внизу).
+// (кроме выбора класса: тогда ещё присылаем обычную клавиатуру внизу,
+// и кнопок «фото/файл — …»: тогда присылаем файл записи).
 
 import { api, BotApiError } from 'sdk';
 import { KEYBOARD, chosenText, viewFor } from '../lib/bot.js';
 import { store } from '../lib/notes.js';
 import { prefs } from '../lib/prefs.js';
+import { sendNoteFile } from '../lib/files.js';
 
 export default async function (query, ctx) {
   const chat = query.message?.chat;
   const result = chat ? await viewFor(query.data, chat.id, Date.now(), store, prefs) : null;
   let notice;
 
-  if (result) {
+  if (result?.denied) {
+    notice = 'файл недоступен';
+  } else if (result?.send) {
+    try {
+      await sendNoteFile(chat.id, result.send);
+    } catch (err) {
+      if (!(err instanceof BotApiError)) throw err;
+      console.warn('sendNoteFile failed', err.description);
+      notice = 'не получилось прислать файл';
+    }
+  } else if (result) {
     try {
       await api.editMessageText({
         chat_id: chat.id,

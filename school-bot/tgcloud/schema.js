@@ -15,6 +15,10 @@ export const notes = table('notes', {
   authorId: integer('author_id').notNull(),
   authorName: text('author_name'),
   private: boolean('private').notNull().default(false),
+  // прикреплённый файл: лежит в Telegram, здесь — file_id; fileKind — 'photo' или 'document'
+  fileId: text('file_id'),
+  fileKind: text('file_kind'),
+  fileName: text('file_name'),
   created: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
 }, (t) => ({
   clsDueIdx: index('idx_notes_cls_due').on(t.cls, t.due),

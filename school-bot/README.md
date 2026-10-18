@@ -67,12 +67,26 @@ tgcloud/
   lib/homework.js       — ДЗ: поиск предмета, ближайший урок
   lib/notes.js, prefs.js — база: задания и выбранный класс
   handlers/             — message, callback_query
-  endpoints/            — для Mini App: listNotes, addNote, deleteNote, getClass, setClass
+  endpoints/            — для Mini App: listNotes, addNote, deleteNote, getClass, setClass,
+                          sendNoteFile, noteFile
+  lib/files.js          — файлы: загрузить в Telegram, прислать обратно
   schema.js             — таблицы notes и chats
 webapp/                 — Mini App (index.html, style.css, app.js)
 scripts/build.mjs       — сборка Mini App в dist/
 scripts/deploy.mjs      — деплой
 test/school.test.js     — тесты
 ```
+
+## Файлы к дз
+
+К записи можно прикрепить одно фото или файл (до 10 мб из приложения).
+
+- в чате: пришли фото/файл с подписью `/dz мат: текст` (или `/my …`, `/note …`); текст после двоеточия можно не писать;
+- в приложении: «прикрепить файл» в окне записи. Фото открывается превью, любой файл бот пришлёт в чат кнопкой «в чат»;
+- под `/dz` и расписанием дня — кнопки «фото — предмет дата»: бот присылает файл в этот чат.
+
+Своего хранилища нет: файл лежит в Telegram, в базе — `file_id` (`lib/files.js`). Чтобы получить `file_id`
+файла из приложения, бот на секунду отправляет его человеку в личку и удаляет сообщение.
+Кто видит файл — так же, как запись: класс, профильная группа или только автор.
 
 Все тексты бота и приложения — строчными и без эмодзи (то, что пишут сами ученики, остаётся как есть).

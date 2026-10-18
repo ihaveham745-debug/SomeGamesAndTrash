@@ -13,6 +13,9 @@ const FIELDS = {
   authorId: notes.authorId,
   authorName: notes.authorName,
   private: notes.private,
+  fileId: notes.fileId,
+  fileKind: notes.fileKind,
+  fileName: notes.fileName,
 };
 
 /** Общие записи и личные записи viewer (null — только общие). */
@@ -39,11 +42,23 @@ export const store = {
     db.select(FIELDS).from(notes)
       .where(and(inArray(notes.cls, groups), visibleTo(viewer), or(gte(notes.due, from), isNull(notes.due)))).orderBy(asc(notes.id)).all(),
   ),
-  add: async ({ cls, subject, due, text, authorId, authorName, private: isPrivate = false }) => {
-    const [row] = await db.insert(notes).values({ cls, subject, due, text, authorId, authorName, private: isPrivate }).returning(FIELDS);
+  add: async ({ cls, subject, due, text, authorId, authorName, private: isPrivate = false, fileId = null, fileKind = null, fileName = null }) => {
+    const [row] = await db.insert(notes)
+      .values({ cls, subject, due, text, authorId, authorName, private: isPrivate, fileId, fileKind, fileName })
+      .returning(FIELDS);
     return row;
   },
+  get: async (id) => (Number.isInteger(id) ? safeOne(db.select(FIELDS).from(notes).where(eq(notes.id, id)).get()) : null),
 };
+
+async function safeOne(query) {
+  try {
+    return await query;
+  } catch (err) {
+    console.error('notes query failed', err);
+    return null;
+  }
+}
 
 /** Все записи групп, которые видит viewer (для Mini App: их немного, приложение само раскладывает по дням). */
 export function groupNotes(groups, viewer) {

@@ -7,7 +7,8 @@
 // Задания и заметки (lib/notes.js в боте, массив в тестах):
 //   store.range(groups, from, to, viewer) — записи групп с due в этих датах ('ГГГГ-ММ-ДД' включительно);
 //   store.upcoming(groups, from, viewer)  — задания групп с due >= from и все их заметки (due = null);
-//   store.add(note)                       — сохранить запись (note.cls — группа урока).
+//   store.add(note)                       — сохранить запись (note.cls — группа урока);
+//   store.get(id)                         — одна запись (для кнопки «прислать файл»).
 // Группы варианта — его класс и профиль (homework.groupsOf).
 // viewer — чьи личные записи (private) добавить: id пользователя в личке, null в группе —
 // там сообщение видят все, и личное показывать нельзя.
@@ -17,7 +18,9 @@ import {
   isClass, isoDate, mondayOf, parseDate, schoolDay, stepDay, today, weekday,
 } from './schedule.js';
 import { CLASSES, MINI_APP_URL, PROFILES, TITLE, classLabel, groupLabel } from './school.js';
-import { cleanText, findSubject, groupOf, groupsOf, nextLessonDate, validateNote } from './homework.js';
+import {
+  canSee, cleanText, fileFromMessage, fileLabel, findSubject, groupOf, groupsOf, nextLessonDate, validateNote,
+} from './homework.js';
 
 export const NO_STORE = {
   range: async () => [],
@@ -98,6 +101,7 @@ const HELP_TEXT = [
   'записать дз к ближайшему уроку: <code>/dz мат: №5–10</code>',
   'заметка к предмету: <code>/note хим: формулы на стр. 12</code>',
   'личное дз (видно только тебе): <code>/my мат: решить ещё №7</code>',
+  'фото или файл к дз — пришли его с подписью <code>/dz мат: текст</code>',
   '',
   'стрелки ‹ › под расписанием листают дни и недели прямо в сообщении.',
   'а кнопка <b>«расписание»</b> слева от поля ввода открывает приложение.',
@@ -166,12 +170,23 @@ function classPicker(cls, intro = '<b>выбери свой класс и про
   return { text: `${intro}\n\n${PROFILE_HELP}${now}`, reply_markup: classKeyboard(cls) };
 }
 
-function dayKeyboard(cls, date, nowMs) {
+// Кнопки «прислать файл» — 'f:<id записи>': бот отправит файл в этот чат.
+const MAX_FILE_BUTTONS = 8;
+
+function fileButtons(notes) {
+  return notes.filter((n) => n.fileId).slice(0, MAX_FILE_BUTTONS).map((n) => [{
+    text: `${n.fileKind === 'photo' ? 'фото' : 'файл'} — ${n.subject}${n.due ? ` ${ddmm(parseDate(n.due))}` : ''}`.slice(0, 60),
+    callback_data: `f:${n.id}`,
+  }]);
+}
+
+function dayKeyboard(cls, date, nowMs, notes = []) {
   const prev = stepDay(date, false);
   const next = stepDay(date, true);
   const isToday = date.getTime() === today(nowMs).getTime();
   return {
     inline_keyboard: [
+      ...fileButtons(notes),
       [button(`‹ ${shortDate(prev)}`, 'd', cls, prev), button(`${shortDate(next)} ›`, 'd', cls, next)],
       [button(isToday ? 'обновить' : 'сегодня', 'd', cls, TODAY), button('вся неделя', 'w', cls, date)],
     ],
@@ -204,7 +219,7 @@ const viewerOf = (chatId) => (Number.isInteger(chatId) && chatId > 0 ? chatId : 
 
 async function dayView(cls, date, nowMs, store, viewer) {
   const notes = await store.range(groupsOf(cls), isoDate(date), isoDate(date), viewer);
-  return { text: formatDay(cls, date, nowMs, notes), reply_markup: dayKeyboard(cls, date, nowMs) };
+  return { text: formatDay(cls, date, nowMs, notes), reply_markup: dayKeyboard(cls, date, nowMs, notes) };
 }
 
 async function weekView(cls, date, nowMs, store, viewer) {
@@ -227,9 +242,10 @@ function authorName(user) {
 }
 
 function noteLine(n) {
-  if (n.private) return `${escapeHtml(n.text)} <i>— только ты</i>`;
+  const body = [n.text && escapeHtml(n.text), n.fileId && `<i>[${escapeHtml(fileLabel(n))}]</i>`].filter(Boolean).join(' ');
+  if (n.private) return `${body} <i>— только ты</i>`;
   const author = n.authorName ? ` <i>— ${escapeHtml(n.authorName)}</i>` : '';
-  return `${escapeHtml(n.text)}${author}`;
+  return `${body}${author}`;
 }
 
 /** Кто увидит запись: 'только ты', 'весь 10а', 'вся группа гум (из 10а и 10б)'. */
@@ -246,7 +262,7 @@ async function homeworkList(cls, nowMs, store, viewer) {
   const notes = all.filter((n) => !n.due).sort((a, b) => a.subject.localeCompare(b.subject, 'ru') || a.id - b.id);
 
   const parts = [`<b>домашние задания</b> · ${escapeHtml(classLabel(cls))}`];
-  if (tasks.length === 0) parts.push('<i>пока ничего не задано </i>');
+  if (tasks.length === 0) parts.push('<i>пока ничего не задано</i>');
   let lastDue = null;
   for (const n of tasks) {
     if (n.due !== lastDue) {
@@ -272,7 +288,8 @@ async function homeworkList(cls, nowMs, store, viewer) {
     kept.push(line);
     length += line.length + 1;
   }
-  return { text: [...kept, ...tail].join('\n') };
+  const files = fileButtons([...tasks, ...notes]);
+  return { text: [...kept, ...tail].join('\n'), ...(files.length && { reply_markup: { inline_keyboard: files } }) };
 }
 
 /**
@@ -294,13 +311,14 @@ async function homeworkCommand(kind, cls, args, message, nowMs, store) {
   }
 
   const text = cleanText(args.slice(sep + 1));
+  const file = fileFromMessage(message);
   let due = null;
   if (kind !== 'note') {
     const date = nextLessonDate(cls, found.subject, nowMs);
     if (!date) return { text: `ближайших уроков по предмету «${escapeHtml(found.subject)}» в расписании нет.` };
     due = isoDate(date);
   }
-  const error = validateNote({ cls, subject: found.subject, due, text });
+  const error = validateNote({ cls, subject: found.subject, due, text, fileId: file?.fileId });
   if (error) return { text: `${error === 'пустой текст' ? 'а что задали? текст после двоеточия пустой.' : escapeHtml(error)}\n\n${USAGE[kind]}` };
 
   const group = groupOf(cls, found.subject);
@@ -308,13 +326,13 @@ async function homeworkCommand(kind, cls, args, message, nowMs, store) {
   try {
     await store.add({
       cls: group, subject: found.subject, due, text, private: isPrivate,
-      authorId: message.from?.id ?? 0, authorName: authorName(message.from),
+      authorId: message.from?.id ?? 0, authorName: authorName(message.from), ...file,
     });
   } catch (err) {
     console.error('store.add failed', err);
     return { text: 'не получилось сохранить, попробуй ещё раз чуть позже.' };
   }
-  const who = audience(group, isPrivate);
+  const who = file ? `${audience(group, isPrivate)}\n${fileLabel(file)} прикреплено.` : audience(group, isPrivate);
   if (kind === 'note') return { text: `заметка по предмету <b>${escapeHtml(found.subject)}</b> сохранена.\n${who}\nвсе записи — /dz` };
   const date = parseDate(due);
   return {
@@ -368,7 +386,14 @@ function commandArgs(text) {
  * (в группах бот молчит на посторонние сообщения).
  */
 export async function replyTo(message, nowMs = Date.now(), store = NO_STORE, prefs = memoryPrefs()) {
-  const action = actionFor(message.text);
+  // У фото и файлов текст — в подписи (caption): «/dz мат: решить №5» под фото.
+  const text = message.text ?? message.caption;
+  const action = actionFor(text);
+  const file = fileFromMessage(message);
+  if (file && !['dz', 'my', 'note'].includes(action)) {
+    if (message.chat?.type !== 'private') return null;
+    return { text: FILE_HINT };
+  }
   if (!action) {
     if (message.chat?.type === 'private') return { text: 'не понял, жми кнопки внизу или /help', reply_markup: KEYBOARD };
     return null;
@@ -376,14 +401,32 @@ export async function replyTo(message, nowMs = Date.now(), store = NO_STORE, pre
   const saved = await prefs.get(message.chat?.id);
   const cls = isClass(saved) ? saved : null;
   if (!cls && NEEDS_CLASS.has(action)) return classPicker(null, 'сначала выбери свой класс и профиль:');
-  return ACTIONS[action]({ now: nowMs, store, message, args: commandArgs(message.text), cls });
+  const args = commandArgs(text);
+  if (file && !args) return { text: FILE_HINT };
+  return ACTIONS[action]({ now: nowMs, store, message, args, cls });
 }
+
+const FILE_HINT = [
+  'чтобы прикрепить фото или файл к дз, подпиши его командой:',
+  '<code>/dz мат: решить №5</code> — увидят все, кому задано',
+  '<code>/my мат: мой конспект</code> — только тебе',
+  '',
+  'текст после двоеточия можно не писать: <code>/dz мат:</code>',
+].join('\n');
 
 /**
  * Что показать по нажатию кнопки под сообщением; null — непонятная кнопка.
  * { view, chosen } — chosen: выбран класс (тогда к ответу стоит прислать клавиатуру).
+ * { send: note } — прислать в чат файл записи; { denied } — файл недоступен.
  */
 export async function viewFor(data, chatId, nowMs = Date.now(), store = NO_STORE, prefs = memoryPrefs()) {
+  const fileReq = /^f:(\d+)$/.exec(data ?? '');
+  if (fileReq) {
+    const note = await store.get?.(Number(fileReq[1]));
+    const cls = await prefs.get(chatId);
+    if (!note?.fileId || !canSee(note, groupsOf(isClass(cls) ? cls : null), viewerOf(chatId))) return { denied: true };
+    return { send: note };
+  }
   const pick = /^c:([a-z]+-[a-z]+)$/.exec(data ?? '');
   if (pick) {
     if (!isClass(pick[1])) return null;
