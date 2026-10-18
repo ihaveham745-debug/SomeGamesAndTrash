@@ -669,8 +669,8 @@ document.addEventListener('visibilitychange', () => {
 // --- Тема и Telegram ---
 
 function applyScheme() {
-  const dark = inTelegram ? tg.colorScheme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-  document.documentElement.dataset.scheme = dark ? 'dark' : 'light';
+  // Всегда тёмная тема — под космические обои, какая бы тема ни стояла в Telegram.
+  document.documentElement.dataset.scheme = 'dark';
   if (!inTelegram) return;
   // Шапку и фон Telegram красим в цвет нашего фона, чтобы не было шва.
   const base = getComputedStyle(document.documentElement).getPropertyValue('--base').trim();
