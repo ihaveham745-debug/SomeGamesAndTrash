@@ -8,7 +8,7 @@ import {
 } from './lib/schedule.js';
 import { CLASSES, classLabel, groupLabel } from './lib/school.js';
 import {
-  MAX_FILE_MB, MAX_NOTE_LENGTH, cleanText, fileLabel, groupOf, homeworkFor, nextLessonDate, subjectsOf,
+  MAX_FILE_MB, MAX_NOTE_LENGTH, REMIND_MODES, cleanText, fileLabel, groupOf, homeworkFor, nextLessonDate, subjectsOf,
 } from './lib/homework.js';
 
 const tg = window.Telegram?.WebApp;
@@ -17,7 +17,7 @@ const inTelegram = Boolean(tg) && tg.platform !== 'unknown';
 const $ = (id) => document.getElementById(id);
 
 const CLASS_KEY = 'school.class.v2'; // v1 хранил только профиль ('gum')
-const state = { view: 'day', date: firstDay(), cls: savedClass(), notes: [], me: null };
+const state = { view: 'day', date: firstDay(), cls: savedClass(), notes: [], me: null, reminders: new Map() };
 
 // Записывать и удалять задания можно только из Telegram: сервер проверяет, кто это.
 const canWrite = inTelegram && Boolean(tg.initData) && typeof tg.Serverless?.call === 'function';
@@ -50,10 +50,11 @@ async function loadNotes() {
   if (!canWrite || !state.cls) return;
   const cls = state.cls;
   try {
-    const { notes, me } = await callBot('listNotes', { cls });
+    const { notes, me, reminders = [] } = await callBot('listNotes', { cls });
     if (cls !== state.cls) return; // пока грузили, класс сменили
     state.notes = notes;
     state.me = me;
+    state.reminders = new Map(reminders.map((r) => [r.noteId, r]));
     render();
   } catch (err) {
     console.warn('listNotes failed', err);
@@ -93,6 +94,7 @@ const ICON = {
   clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12.5 4 4 8-9"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15zM10 20.5a2 2 0 0 0 4 0"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>',
 };
@@ -161,8 +163,61 @@ function noteItemHtml(n) {
   return `<div class="hw-item${n.private ? ' private' : ''}">
     <div class="hw-body">${n.text ? `<div class="hw-text">${esc(n.text)}</div>` : ''}${n.fileId
       ? `<button class="hw-file press" type="button" data-file="${n.id}">${ICON.clip}<span>${esc(fileLabel(n))}</span></button>` : ''}${by ? `<div class="hw-by">${esc(by)}</div>` : ''}</div>
+    ${canRemind(n) ? `<button class="hw-bell press${state.reminders.has(n.id) ? ' on' : ''}" type="button" data-remind="${n.id}" aria-label="напоминание">${ICON.bell}</button>` : ''}
     ${mine ? `<button class="hw-del press" type="button" data-del="${n.id}" aria-label="удалить">${ICON.trash}</button>` : ''}
   </div>`;
+}
+
+/** Напомнить можно о дз с датой, которое ещё впереди. */
+function canRemind(n) {
+  return canWrite && Boolean(n.due) && n.due >= isoDate(today());
+}
+
+/** '21.10 в 19:00' — когда придёт напоминание. */
+function whenText(at) {
+  const d = new Date((at + 9 * 3600) * 1000); // Якутск, как в расписании
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)} в ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
+async function saveReminder(note, mode) {
+  const res = await callBot('setReminder', { id: note.id, cls: state.cls, mode });
+  if (res.mode) state.reminders.set(note.id, { noteId: note.id, mode: res.mode, at: res.at });
+  else state.reminders.delete(note.id);
+  return res;
+}
+
+function openReminder(id) {
+  const note = state.notes.find((n) => n.id === id);
+  if (!note) return;
+  const current = state.reminders.get(id);
+  const options = Object.entries(REMIND_MODES).map(([mode, label]) => `<button type="button" class="remind-option press${current?.mode === mode ? ' current' : ''}" data-mode="${mode}">${esc(label)}</button>`).join('');
+  const root = openSheet(`<div class="sheet glass blur">
+    <div class="sheet-title">напомнить о дз</div>
+    <div class="sheet-subject">${esc(note.subject)}</div>
+    <div class="sheet-due">${current ? `напомню ${esc(whenText(current.at))}` : 'бот напишет тебе в личку — только тебе'}</div>
+    <div class="remind-list">${options}</div>
+    <div class="sheet-error" role="alert"></div>
+    <div class="sheet-buttons">
+      ${current ? '<button class="btn press" type="button" data-mode="off">выключить</button>' : ''}
+      <button class="btn press" type="button" data-close>${current ? 'готово' : 'отмена'}</button>
+    </div>
+  </div>`);
+  root.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-mode]');
+    if (!btn) return;
+    const error = root.querySelector('.sheet-error');
+    error.textContent = '';
+    try {
+      const res = await saveReminder(note, btn.dataset.mode === 'off' ? null : btn.dataset.mode);
+      try { tg.HapticFeedback?.notificationOccurred('success'); } catch { /* старый клиент */ }
+      closeSheet();
+      render();
+      if (res.mode) notify(`напомню ${whenText(res.at)}`);
+    } catch (err) {
+      error.textContent = err?.message || 'не получилось';
+    }
+  });
 }
 
 function lessonHomeworkHtml(p, iso) {
@@ -364,6 +419,10 @@ function openComposer({ kind, subject = null, due = null }) {
       <span><b>только мне</b><small class="who"></small></span>
       <input type="checkbox" name="private" role="switch">
     </label>
+    ${kind === 'hw' ? `<select class="field" name="remind">
+      <option value="">не напоминать</option>
+      ${Object.entries(REMIND_MODES).map(([mode, label]) => `<option value="${mode}">напомнить мне ${esc(label)}</option>`).join('')}
+    </select>` : ''}
     <div class="sheet-error" role="alert"></div>
     <div class="sheet-buttons">
       <button class="btn press" type="button" data-close>отмена</button>
@@ -440,6 +499,15 @@ function openComposer({ kind, subject = null, due = null }) {
         cls, subject: subj, due: kind === 'hw' ? currentDue : null, text, private: form.private.checked, file,
       });
       if (cls === state.cls) state.notes.push(note);
+      const remind = form.remind?.value;
+      if (remind && note.due) {
+        try {
+          const res = await saveReminder(note, remind);
+          notify(`сохранил. напомню ${whenText(res.at)}`);
+        } catch (err) {
+          notify(`дз сохранено, но напоминание не включилось: ${err?.message || 'ошибка'}`);
+        }
+      }
       try { tg.HapticFeedback?.notificationOccurred('success'); } catch { /* старый клиент */ }
       closeSheet();
       render();
@@ -803,9 +871,10 @@ function go(date, view = state.view) {
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('.sheet-backdrop')) return;
-  const el = e.target.closest('[data-add], [data-del], [data-file], [data-date], [data-view], #prev-week, #next-week, #to-today, #class-btn, #wall-btn');
+  const el = e.target.closest('[data-add], [data-del], [data-file], [data-remind], [data-date], [data-view], #prev-week, #next-week, #to-today, #class-btn, #wall-btn');
   if (!el) return;
-  if (el.dataset.file) openFile(Number(el.dataset.file));
+  if (el.dataset.remind) openReminder(Number(el.dataset.remind));
+  else if (el.dataset.file) openFile(Number(el.dataset.file));
   else if (el.dataset.add) openComposer({ kind: el.dataset.add, subject: el.dataset.subject, due: el.dataset.due });
   else if (el.dataset.del) deleteNote(Number(el.dataset.del));
   else if (el.dataset.date) go(parseDate(el.dataset.date), 'day');

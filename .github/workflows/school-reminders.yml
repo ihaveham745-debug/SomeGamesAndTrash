@@ -1,0 +1,42 @@
+# Будильник для напоминаний о дз в боте расписания 10-х классов (school-bot/).
+# У Telegram Serverless нет запуска по расписанию, поэтому раз в 10 минут
+# GitHub запускает в облаке бота endpoints/remindTick — он рассылает напоминания, чьё время пришло.
+#
+# Чтобы заработало:
+#   1. Settings → Secrets and variables → Actions → New repository secret:
+#      TGCLOUD_TOKEN_SCHOOL = ключ из @BotFather → бот → Serverless → CLI Access (app8734400455:…).
+#   2. Этот файл должен лежать в ветке по умолчанию: расписание GitHub запускает только оттуда.
+# Без будильника напоминания всё равно уходят, но только когда кто-то пользуется ботом.
+
+name: school-reminders
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: school-reminders
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/bot-deploy-d6bi2e
+          sparse-checkout: school-bot
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: install tgcloud
+        working-directory: school-bot
+        run: npm install --no-save --no-audit --no-fund @tgcloud/cli@^0.2.0
+      - name: send due reminders
+        working-directory: school-bot
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN_SCHOOL }}
+          TGCLOUD_NO_PAGER: '1'
+        run: npx tgcloud run endpoints/remindTick '{}'

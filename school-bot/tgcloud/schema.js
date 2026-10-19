@@ -1,6 +1,6 @@
 // schema — таблицы базы данных (именованные экспорты).
 
-import { boolean, index, integer, sql, table, text } from 'sdk/db';
+import { boolean, index, integer, sql, table, text, uniqueIndex } from 'sdk/db';
 
 // Домашние задания и заметки. cls — группа урока: 'a' / 'b' (весь 10а / 10б) или профиль
 // ('se', 'tech', 'en', 'gum') — запись видят все из этой группы.
@@ -39,3 +39,18 @@ export const wallpapers = table('wallpapers', {
   fileId: text('file_id'),
   updated: integer('updated_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
 });
+
+// Напоминания о дз: каждый включает себе сам. at — когда прислать (unix-секунды);
+// cls — класс и профиль того, кто включил (по нему считали время урока).
+export const reminders = table('reminders', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull(),
+  noteId: integer('note_id').notNull(),
+  cls: text('cls').notNull(),
+  mode: text('mode').notNull(),
+  at: integer('at').notNull(),
+  sent: boolean('sent').notNull().default(false),
+}, (t) => ({
+  userNoteIdx: uniqueIndex('idx_reminders_user_note').on(t.userId, t.noteId),
+  dueIdx: index('idx_reminders_due').on(t.sent, t.at),
+}));

@@ -8,13 +8,16 @@ import { KEYBOARD, chosenText, viewFor } from '../lib/bot.js';
 import { store } from '../lib/notes.js';
 import { prefs } from '../lib/prefs.js';
 import { sendNoteFile } from '../lib/files.js';
+import { setReminder, tickReminders } from '../lib/reminders.js';
 
 export default async function (query, ctx) {
   const chat = query.message?.chat;
-  const result = chat ? await viewFor(query.data, chat.id, Date.now(), store, prefs) : null;
+  const result = chat ? await viewFor(query.data, chat.id, Date.now(), store, prefs, { set: setReminder }) : null;
   let notice;
 
-  if (result?.denied) {
+  if (result?.notice) {
+    notice = result.notice;
+  } else if (result?.denied) {
     notice = 'файл недоступен';
   } else if (result?.send) {
     try {
@@ -60,4 +63,6 @@ export default async function (query, ctx) {
     if (!(err instanceof BotApiError)) throw err;
     console.warn('answerCallbackQuery failed', err.description);
   }
+
+  await tickReminders(); // заодно разослать напоминания, чьё время пришло
 }

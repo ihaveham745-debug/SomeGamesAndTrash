@@ -1490,3 +1490,52 @@ textarea.field {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* --- Напоминания --- */
+
+.hw-bell {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--label-2);
+}
+
+.hw-bell svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.hw-bell.on {
+  color: #ffd60a;
+}
+
+.hw-bell.on svg {
+  fill: currentColor;
+}
+
+.remind-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.remind-option {
+  padding: 12px 14px;
+  border-radius: 14px;
+  text-align: left;
+  font-size: 16px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--label) 6%, transparent);
+}
+
+.remind-option.current {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}

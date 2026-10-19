@@ -68,7 +68,9 @@ tgcloud/
   lib/notes.js, prefs.js — база: задания и выбранный класс
   handlers/             — message, callback_query
   endpoints/            — для Mini App: listNotes, addNote, deleteNote, getClass, setClass,
-                          sendNoteFile, noteFile, getWallpaper, setWallpaper, wallpaperImage, deleteWallpaper
+                          sendNoteFile, noteFile, getWallpaper, setWallpaper, wallpaperImage, deleteWallpaper,
+                          setReminder, remindTick
+  lib/reminders.js      — напоминания: включить и разослать
   lib/files.js          — файлы: загрузить в Telegram, прислать обратно
   schema.js             — таблицы notes и chats
 webapp/                 — Mini App (index.html, style.css, app.js)
@@ -95,5 +97,18 @@ test/school.test.js     — тесты
 из галереи. Фото приложение уменьшает до 1280 px и отправляет боту (в Telegram, в базе — `file_id`,
 таблица `wallpapers`), выбор одинаковый на всех устройствах. Своё фото получить может только его хозяин
 (`wallpaperImage` отдаёт обои того, кто спрашивает). Своё фото можно удалить кнопкой с корзиной (`deleteWallpaper`) — тогда снова котики.
+
+## Напоминания о дз
+
+Каждый сам включает себе напоминание о конкретном дз — бот напишет в личку:
+вечером накануне (19:00), утром в день урока (7:30) или за 10 минут до урока.
+
+- в приложении: колокольчик у дз (жёлтый — включено) или «напомнить мне …» в окне записи;
+- в чате: кнопки «напомнить вечером / утром / перед уроком» под ответом на `/dz`.
+
+Своего расписания у платформы нет, поэтому рассылку (`lib/reminders.js`, `sendDueReminders`) запускают:
+- попутно — каждое сообщение боту, нажатие кнопки, открытие приложения;
+- по часам — GitHub Actions раз в 10 минут (`.github/workflows/school-reminders.yml` → `endpoints/remindTick`).
+  Для этого нужен секрет `TGCLOUD_TOKEN_SCHOOL` в настройках репозитория, а файл workflow — в ветке по умолчанию.
 
 Все тексты бота и приложения — строчными и без эмодзи (то, что пишут сами ученики, остаётся как есть).

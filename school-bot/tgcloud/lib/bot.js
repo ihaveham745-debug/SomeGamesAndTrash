@@ -14,12 +14,13 @@
 // там сообщение видят все, и личное показывать нельзя.
 
 import {
-  DAY_SHORT, SCHOOL_DAYS, addDays, dayMonth, ddmm, escapeHtml, formatBells, formatDay, formatWeek,
-  isClass, isoDate, mondayOf, parseDate, schoolDay, stepDay, today, weekday,
+  DAY_SHORT, SCHOOL_DAYS, addDays, dayMonth, ddmm, escapeHtml, formatBells, formatDay, formatWeek, hhmm,
+  isClass, isoDate, mondayOf, parseDate, roomText, schoolDay, stepDay, today, weekday,
 } from './schedule.js';
-import { CLASSES, MINI_APP_URL, PROFILES, TITLE, classLabel, groupLabel } from './school.js';
+import { CLASSES, MINI_APP_URL, PROFILES, TITLE, UTC_OFFSET_HOURS, classLabel, groupLabel } from './school.js';
 import {
-  canSee, cleanText, fileFromMessage, fileLabel, findSubject, groupOf, groupsOf, nextLessonDate, validateNote,
+  REMIND_MODES, canSee, cleanText, fileFromMessage, fileLabel, findSubject, groupOf, groupsOf, lessonOn, nextLessonDate,
+  validateNote,
 } from './homework.js';
 
 export const NO_STORE = {
@@ -102,6 +103,7 @@ const HELP_TEXT = [
   'заметка к предмету: <code>/note хим: формулы на стр. 12</code>',
   'личное дз (видно только тебе): <code>/my мат: решить ещё №7</code>',
   'фото или файл к дз — пришли его с подписью <code>/dz мат: текст</code>',
+  'напоминание о дз — кнопки «напомнить» под записью или колокольчик в приложении',
   '',
   'стрелки ‹ › под расписанием листают дни и недели прямо в сообщении.',
   'а кнопка <b>«расписание»</b> слева от поля ввода открывает приложение.',
@@ -323,8 +325,9 @@ async function homeworkCommand(kind, cls, args, message, nowMs, store) {
 
   const group = groupOf(cls, found.subject);
   const isPrivate = kind === 'my';
+  let saved;
   try {
-    await store.add({
+    saved = await store.add({
       cls: group, subject: found.subject, due, text, private: isPrivate,
       authorId: message.from?.id ?? 0, authorName: authorName(message.from), ...file,
     });
@@ -337,7 +340,13 @@ async function homeworkCommand(kind, cls, args, message, nowMs, store) {
   const date = parseDate(due);
   return {
     text: `записал ${isPrivate ? 'личное ' : ''}дз по предмету <b>${escapeHtml(found.subject)}</b> к уроку ${DAY_SHORT[weekday(date) - 1]}, ${dayMonth(date)}.\n${who}\nвсе задания — /dz`,
-    reply_markup: { inline_keyboard: [[button(`${shortDate(date)}`, 'd', cls, date)]] },
+    reply_markup: {
+      inline_keyboard: [
+        [button(`${shortDate(date)}`, 'd', cls, date)],
+        // напоминания — только в личке: бот пишет человеку сам
+        ...(viewer && saved?.id ? [remindButtons(saved.id)] : []),
+      ],
+    },
   };
 }
 
@@ -406,6 +415,45 @@ export async function replyTo(message, nowMs = Date.now(), store = NO_STORE, pre
   return ACTIONS[action]({ now: nowMs, store, message, args, cls });
 }
 
+// --- Напоминания ---
+// Кнопки 'r:<id записи>:<mode>' — включить напоминание; 'r:<id>:off' — выключить.
+
+function remindButtons(noteId) {
+  return [
+    { text: 'напомнить вечером', callback_data: `r:${noteId}:evening` },
+    { text: 'утром', callback_data: `r:${noteId}:morning` },
+    { text: 'перед уроком', callback_data: `r:${noteId}:before` },
+  ];
+}
+
+/** '21.10 в 19:00' — когда придёт напоминание (время местное). */
+function whenText(at) {
+  const local = new Date((at + UTC_OFFSET_HOURS * 3600) * 1000);
+  const day = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
+  return `${ddmm(day)} в ${hhmm(local.getUTCHours() * 60 + local.getUTCMinutes())}`;
+}
+
+/** Текст напоминания: что задано, к какому уроку, во сколько и где. */
+export function reminderMessage(cls, note, mode, nowMs = Date.now()) {
+  const due = parseDate(note.due);
+  const diff = Math.round((due.getTime() - today(nowMs).getTime()) / 86400000);
+  const whenDay = { 0: 'сегодня', 1: 'завтра' }[diff] ?? `${DAY_SHORT[weekday(due) - 1]}, ${dayMonth(due)}`;
+  const lesson = lessonOn(cls, note.due, note.subject);
+  const where = lesson
+    ? `${lesson.n} урок${lesson.start !== null ? `, ${hhmm(lesson.start)}` : ''}${lesson.room ? `, ${roomText(lesson.room)}` : ''}`
+    : '';
+  const lines = [
+    `<b>напоминание о дз</b> — ${whenDay}`,
+    '',
+    `<b>${escapeHtml(note.subject)}</b>${where ? ` · ${escapeHtml(where)}` : ''}`,
+    noteLine(note),
+  ];
+  const keyboard = [];
+  if (note.fileId) keyboard.push([{ text: `${note.fileKind === 'photo' ? 'фото' : 'файл'} к дз`, callback_data: `f:${note.id}` }]);
+  keyboard.push([{ text: 'открыть расписание', web_app: { url: MINI_APP_URL } }]);
+  return { text: lines.join('\n'), reply_markup: { inline_keyboard: keyboard } };
+}
+
 const FILE_HINT = [
   'чтобы прикрепить фото или файл к дз, подпиши его командой:',
   '<code>/dz мат: решить №5</code> — увидят все, кому задано',
@@ -419,7 +467,23 @@ const FILE_HINT = [
  * { view, chosen } — chosen: выбран класс (тогда к ответу стоит прислать клавиатуру).
  * { send: note } — прислать в чат файл записи; { denied } — файл недоступен.
  */
-export async function viewFor(data, chatId, nowMs = Date.now(), store = NO_STORE, prefs = memoryPrefs()) {
+export async function viewFor(data, chatId, nowMs = Date.now(), store = NO_STORE, prefs = memoryPrefs(), remind = null) {
+  const remindReq = /^r:(\d+):(evening|morning|before|off)$/.exec(data ?? '');
+  if (remindReq) {
+    const viewer = viewerOf(chatId);
+    const note = await store.get?.(Number(remindReq[1]));
+    const cls = await prefs.get(chatId);
+    if (!viewer || !remind || !isClass(cls) || !canSee(note, groupsOf(cls), viewer)) return { notice: 'напоминание недоступно' };
+    const mode = remindReq[2] === 'off' ? null : remindReq[2];
+    try {
+      const res = await remind.set(viewer, cls, note, mode, nowMs);
+      return { notice: res.mode ? `напомню ${REMIND_MODES[res.mode]}: ${whenText(res.at)}` : 'напоминание выключено' };
+    } catch (err) {
+      if (err.message === 'PAST') return { notice: 'это время уже прошло — выбери другое' };
+      if (err.message === 'NO_LESSON') return { notice: 'не нашёл этот урок в расписании' };
+      throw err;
+    }
+  }
   const fileReq = /^f:(\d+)$/.exec(data ?? '');
   if (fileReq) {
     const note = await store.get?.(Number(fileReq[1]));

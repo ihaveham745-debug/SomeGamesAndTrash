@@ -6,8 +6,8 @@
 // cls у записи — группа урока: 'a' / 'b' (весь класс) или профиль ('se', 'gum', …).
 // Так ДЗ по профильному уроку видят все из этой группы — и из 10а, и из 10б.
 
-import { CLASSES, TIMETABLE } from './school.js';
-import { addDays, bell, fileLabel, isClass, lessonsFor, minutesNow, today } from './schedule.js';
+import { CLASSES, TIMETABLE, UTC_OFFSET_HOURS } from './school.js';
+import { addDays, bell, fileLabel, isClass, lessonsFor, minutesNow, parseDate, today } from './schedule.js';
 
 export const MAX_NOTE_LENGTH = 1000;
 
@@ -153,4 +153,31 @@ export function validateNote({ cls, subject, due, text, fileId = null }) {
   if (!clean && !fileId) return 'пустой текст'; // с файлом текст можно не писать
   if (clean.length > MAX_NOTE_LENGTH) return `слишком длинно: больше ${MAX_NOTE_LENGTH} символов`;
   return null;
+}
+
+// --- Напоминания ---
+// Каждый сам включает напоминание о конкретном дз; бот пишет ему в личку.
+// mode: 'evening' — накануне в 19:00, 'morning' — в день урока в 7:30, 'before' — за 10 минут до урока.
+
+export const REMIND_MODES = {
+  evening: 'вечером накануне',
+  morning: 'утром в день урока',
+  before: 'за 10 минут до урока',
+};
+
+/** Первый урок предмета в этот день у варианта: { n, start } или null. */
+export function lessonOn(cls, iso, subject) {
+  const lesson = lessonsFor(cls, parseDate(iso)).find((p) => p.subject === subject);
+  return lesson ? { ...lesson, start: bell(lesson.n)?.start ?? null } : null;
+}
+
+/** Когда напомнить (unix-секунды) о записи note для варианта cls; null — нельзя (нет даты или урока). */
+export function reminderTime(cls, note, mode) {
+  if (!note?.due || !REMIND_MODES[mode]) return null;
+  const dayStart = parseDate(note.due).getTime() / 1000 - UTC_OFFSET_HOURS * 3600; // местная полночь
+  if (mode === 'evening') return dayStart - 5 * 3600; // 19:00 накануне
+  if (mode === 'morning') return dayStart + (7 * 60 + 30) * 60;
+  const lesson = lessonOn(cls, note.due, note.subject);
+  if (lesson?.start === null || lesson?.start === undefined) return null;
+  return dayStart + (lesson.start - 10) * 60;
 }

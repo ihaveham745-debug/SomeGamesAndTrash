@@ -6,6 +6,7 @@ import {
 } from '../lib/bot.js';
 import { store } from '../lib/notes.js';
 import { prefs } from '../lib/prefs.js';
+import { tickReminders } from '../lib/reminders.js';
 
 export default async function (message, ctx) {
   // «/help@другой_бот» в группе — не нам (бот-админ получает все сообщения группы).
@@ -13,6 +14,7 @@ export default async function (message, ctx) {
   if (mention && mention !== (await api.getMe()).username.toLowerCase()) return;
 
   const reply = await replyTo(message, Date.now(), store, prefs);
+  await tickReminders(); // заодно разослать напоминания, чьё время пришло
   if (!reply) return;
 
   if (actionFor(message.text) === 'start') {

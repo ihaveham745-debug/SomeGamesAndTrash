@@ -5,8 +5,10 @@ import { BELLS, CLASSES, ROWS, TIMETABLE } from '../tgcloud/lib/school.js';
 import {
   dayStatus, formatBells, formatDay, formatWeek, lessonsFor, parseDate, schoolDay, stepDay, today,
 } from '../tgcloud/lib/schedule.js';
-import { findSubject, groupOf, groupsOf, nextLessonDate, subjectsOf, validateNote } from '../tgcloud/lib/homework.js';
-import { BUTTONS, actionFor, memoryPrefs, replyTo, viewFor } from '../tgcloud/lib/bot.js';
+import {
+  findSubject, groupOf, groupsOf, nextLessonDate, reminderTime, subjectsOf, validateNote,
+} from '../tgcloud/lib/homework.js';
+import { BUTTONS, actionFor, memoryPrefs, reminderMessage, replyTo, viewFor } from '../tgcloud/lib/bot.js';
 
 const day = (cls, iso) => lessonsFor(cls, parseDate(iso)).map((p) => `${p.n} ${p.subject}${p.type ? ` (${p.type})` : ''} ${p.room}`);
 // Ср 14.10.2026, местное время → UTC (Якутск UTC+9)
@@ -279,4 +281,65 @@ test('бот: фото и файлы к дз — подписью /dz, кноп�
   const thu = await viewFor('d:a-gum:2026-10-15', 7, now, store, prefs);
   assert.match(thu.view.text, /дз: <i>\[фото\]<\/i> <i>— Аня<\/i>/);
   assert.equal(thu.view.reply_markup.inline_keyboard[0][0].callback_data, 'f:1');
+});
+
+test('напоминания: время, кнопки после /dz, включение кнопкой и текст', async () => {
+  const note = { id: 5, cls: 'gum', subject: 'стилистика', due: '2026-10-22', text: 'выучить термины', authorName: 'Аня', private: false };
+  const local = (sec) => new Date((sec + 9 * 3600) * 1000).toISOString().slice(0, 16);
+  assert.equal(local(reminderTime('a-gum', note, 'evening')), '2026-10-21T19:00');
+  assert.equal(local(reminderTime('a-gum', note, 'morning')), '2026-10-22T07:30');
+  assert.equal(local(reminderTime('a-gum', note, 'before')), '2026-10-22T09:30'); // 3 урок в 09:40
+  assert.equal(reminderTime('a-gum', { ...note, due: null }, 'evening'), null);
+  assert.equal(reminderTime('a-gum', { ...note, due: '2026-10-21' }, 'before'), null); // в среду стилистики нет
+
+  const prefs = memoryPrefs();
+  await prefs.set(7, 'a-gum');
+  await prefs.set(9, 'a-se');
+  const saved = [];
+  const store = {
+    range: async () => [], upcoming: async () => [],
+    add: async (n) => { const row = { id: saved.length + 1, ...n }; saved.push(row); return row; },
+    get: async (id) => saved.find((n) => n.id === id) ?? null,
+  };
+  const set = [];
+  const remind = {
+    set: async (userId, cls, n, mode, nowMs) => {
+      if (!mode) return { mode: null };
+      const at = reminderTime(cls, n, mode);
+      if (at * 1000 <= nowMs) throw new Error('PAST');
+      set.push([userId, cls, n.id, mode]);
+      return { mode, at };
+    },
+  };
+  const now = at('2026-10-14', 10);
+  const msg = (chat, text, type = 'private') => ({ text, chat: { id: chat, type }, from: { id: chat, first_name: 'Аня' } });
+
+  // после записи дз в личке — кнопки напоминаний
+  const res = await replyTo(msg(7, '/dz стил: выучить термины'), now, store, prefs);
+  const row = res.reply_markup.inline_keyboard[1];
+  assert.deepEqual(row.map((b) => b.callback_data), ['r:1:evening', 'r:1:morning', 'r:1:before']);
+  // в группе — без них (там бот не пишет лично)
+  await prefs.set(-100, 'a-gum');
+  const inGroup = await replyTo(msg(-100, '/dz стил: эссе', 'supergroup'), now, store, prefs);
+  assert.equal(inGroup.reply_markup.inline_keyboard.length, 1);
+
+  // кнопка включает напоминание
+  const on = await viewFor('r:1:evening', 7, now, store, prefs, remind);
+  assert.equal(on.notice, 'напомню вечером накануне: 14.10 в 19:00');
+  assert.deepEqual(set[0], [7, 'a-gum', 1, 'evening']);
+  assert.equal((await viewFor('r:1:off', 7, now, store, prefs, remind)).notice, 'напоминание выключено');
+  // чужой профиль не видит это дз; в группе нельзя
+  assert.equal((await viewFor('r:1:evening', 9, now, store, prefs, remind)).notice, 'напоминание недоступно');
+  assert.equal((await viewFor('r:1:evening', -100, now, store, prefs, remind)).notice, 'напоминание недоступно');
+  // прошедшее время
+  const late = at('2026-10-15', 9, 35); // стилистика в 09:40, «за 10 минут» уже прошло
+  assert.match((await viewFor('r:1:before', 7, late, store, prefs, remind)).notice, /уже прошло/);
+
+  // текст напоминания
+  const m = reminderMessage('a-gum', { ...note, fileId: 'P', fileKind: 'photo' }, 'evening', at('2026-10-21', 19));
+  assert.match(m.text, /<b>напоминание о дз<\/b> — завтра/);
+  assert.match(m.text, /<b>стилистика<\/b> · 3 урок, 09:40, каб\. 213/);
+  assert.match(m.text, /выучить термины <i>\[фото\]<\/i> <i>— Аня<\/i>/);
+  assert.equal(m.reply_markup.inline_keyboard[0][0].callback_data, 'f:5');
+  assert.ok(m.reply_markup.inline_keyboard[1][0].web_app.url.startsWith('https://app8734400455'));
 });
