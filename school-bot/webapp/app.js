@@ -200,23 +200,99 @@ async function saveReminder(note, at) {
 }
 
 /** Окно напоминания: любой день и одно из четырёх времён. */
+// --- Мини-календарь для напоминаний ---
+// Листаешь месяцы ‹ ›, жмёшь на число, выбираешь одно из четырёх времён.
+// День урока отмечен точкой, прошедшие дни недоступны.
+
+const MONTHS_NOM = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+
+/**
+ * lessonDay — дата урока ('ГГГГ-ММ-ДД'), at — уже выбранное напоминание (unix-секунды),
+ * day — какой день выбрать сразу. value() → unix-секунды или null (день не выбран — не напоминать).
+ */
+function reminderPicker({ lessonDay = null, at = null, day = null } = {}) {
+  const todayIso = isoDate(today());
+  let time = '18:00';
+  if (at) [day, time] = unixToLocal(at);
+  if (!REMIND_TIMES.includes(time)) time = '18:00';
+  let month = (day ?? lessonDay ?? todayIso).slice(0, 7);
+  const el = document.createElement('div');
+  el.className = 'rpick';
+
+  const shift = (ym, by) => {
+    const [y, m] = ym.split('-').map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + by, 1));
+    return d.toISOString().slice(0, 7);
+  };
+
+  const draw = () => {
+    const [y, m] = month.split('-').map(Number);
+    const first = parseDate(`${month}-01`);
+    const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const cells = [];
+    for (let i = 1; i < weekday(first); i++) cells.push('<span></span>');
+    for (let d = 1; d <= days; d++) {
+      const iso = `${month}-${String(d).padStart(2, '0')}`;
+      const cls = ['rpick-day', 'press', iso < todayIso && 'past', iso === todayIso && 'today', iso === lessonDay && 'lesson', iso === day && 'sel'];
+      cells.push(`<button type="button" class="${cls.filter(Boolean).join(' ')}" data-day="${iso}"${iso < todayIso ? ' disabled' : ''}>${d}</button>`);
+    }
+    const eve = lessonDay ? isoDate(addDays(parseDate(lessonDay), -1)) : null;
+    const dayText = (iso) => { const dd = parseDate(iso); return `${DAY_SHORT[weekday(dd) - 1]}, ${dayMonth(dd)}`; };
+    const hint = day
+      ? `напомню ${dayText(day)} в ${time}`
+      : 'нажми на число — или оставь пустым, тогда не напомню';
+    el.innerHTML = `<div class="rpick-head">
+        <button type="button" class="arrow press" data-month="-1"${month <= todayIso.slice(0, 7) ? ' disabled' : ''} aria-label="предыдущий месяц">‹</button>
+        <b>${MONTHS_NOM[m - 1]} ${y}</b>
+        <button type="button" class="arrow press" data-month="1" aria-label="следующий месяц">›</button>
+      </div>
+      <div class="rpick-grid">${DAY_SHORT.map((w) => `<span class="rpick-wd">${w.toLowerCase()}</span>`).join('')}${cells.join('')}</div>
+      <div class="rpick-quick">
+        ${eve && eve >= todayIso ? `<button type="button" class="chip-btn press${day === eve ? ' on' : ''}" data-day="${eve}">накануне урока</button>` : ''}
+        ${day ? '<button type="button" class="chip-btn press" data-clear>не напоминать</button>' : ''}
+      </div>
+      <div class="remind-times"${day ? '' : ' hidden'}>${REMIND_TIMES.map((t) => `<button type="button" class="remind-time press${t === time ? ' current' : ''}" data-time="${t}">${esc(REMIND_TIME_LABELS[t])}</button>`).join('')}</div>
+      <div class="rpick-hint">${esc(hint)}${lessonDay ? ` · урок ${esc(dayText(lessonDay))}` : ''}</div>`;
+  };
+
+  el.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-month], [data-day], [data-time], [data-clear]');
+    if (!btn || btn.disabled) return;
+    e.preventDefault();
+    if (btn.dataset.month) month = shift(month, Number(btn.dataset.month));
+    else if (btn.dataset.day) {
+      day = day === btn.dataset.day ? null : btn.dataset.day;
+      if (day) month = day.slice(0, 7);
+    } else if (btn.dataset.time) time = btn.dataset.time;
+    else if (btn.dataset.clear !== undefined) day = null;
+    haptic();
+    draw();
+  });
+  draw();
+
+  return {
+    el,
+    value: () => (day ? localToUnix(day, time) : null),
+    setLesson(iso) {
+      lessonDay = iso;
+      if (!day) month = (iso ?? todayIso).slice(0, 7);
+      draw();
+    },
+  };
+}
+
 function openReminder(id) {
   const note = state.notes.find((n) => n.id === id);
   if (!note) return;
   const current = state.reminders.get(id);
   const todayIso = isoDate(today());
   const eve = isoDate(addDays(parseDate(note.due), -1));
-  let [day, time] = current ? unixToLocal(current.at) : [eve < todayIso ? todayIso : eve, '18:00'];
-  if (!REMIND_TIMES.includes(time)) time = '18:00';
-  const chips = REMIND_TIMES.map((t) => `<button type="button" class="remind-time press${t === time ? ' current' : ''}" data-time="${t}">${esc(REMIND_TIME_LABELS[t])}</button>`).join('');
+  const picker = reminderPicker({ lessonDay: note.due, at: current?.at ?? null, day: eve >= todayIso ? eve : todayIso });
   const root = openSheet(`<div class="sheet glass blur">
     <div class="sheet-title">напомнить о дз</div>
     <div class="sheet-subject">${esc(note.subject)}</div>
     <div class="sheet-due">${current ? `сейчас: напомню ${esc(whenText(current.at))}` : 'бот напишет тебе в личку — только тебе'}</div>
-    <div class="remind-label">день</div>
-    <input class="field" type="date" name="rdate" min="${todayIso}" value="${day}">
-    <div class="remind-label">время</div>
-    <div class="remind-times">${chips}</div>
+    <div data-rpick></div>
     <div class="sheet-error" role="alert"></div>
     <button class="btn primary press" type="button" data-save>напомнить</button>
     <div class="sheet-buttons">
@@ -224,6 +300,7 @@ function openReminder(id) {
       <button class="btn press" type="button" data-close>отмена</button>
     </div>
   </div>`);
+  root.querySelector('[data-rpick]').replaceWith(picker.el);
   const error = root.querySelector('.sheet-error');
   const save = async (at) => {
     error.textContent = '';
@@ -238,17 +315,10 @@ function openReminder(id) {
     }
   };
   root.addEventListener('click', (e) => {
-    const chip = e.target.closest('[data-time]');
-    if (chip) {
-      time = chip.dataset.time;
-      root.querySelectorAll('[data-time]').forEach((c) => c.classList.toggle('current', c === chip));
-      haptic();
-      return;
-    }
     if (e.target.closest('[data-off]')) return void save(null);
     if (!e.target.closest('[data-save]')) return;
-    const at = localToUnix(root.querySelector('[name="rdate"]').value, time);
-    if (at === null) return void (error.textContent = 'выбери день');
+    const at = picker.value();
+    if (at === null) return void (error.textContent = 'выбери число в календаре');
     if (at * 1000 <= Date.now()) return void (error.textContent = 'это время уже прошло — выбери другое');
     save(at);
   });
@@ -453,11 +523,7 @@ function openComposer({ kind, subject = null, due = null }) {
       <span><b>только мне</b><small class="who"></small></span>
       <input type="checkbox" name="private" role="switch">
     </label>
-    ${kind === 'hw' ? `<select class="field" name="remind">
-      <option value="">не напоминать</option>
-      ${REMIND_TIMES.map((t) => `<option value="${t}">напомнить накануне в ${esc(REMIND_TIME_LABELS[t])}</option>`).join('')}
-      <option value="pick">напомнить в другой день…</option>
-    </select>` : ''}
+    ${kind === 'hw' ? '<div class="remind-block"><div class="remind-label">напомнить мне</div><div data-rpick></div></div>' : ''}
     <div class="sheet-error" role="alert"></div>
     <div class="sheet-buttons">
       <button class="btn press" type="button" data-close>отмена</button>
@@ -491,7 +557,10 @@ function openComposer({ kind, subject = null, due = null }) {
   };
   updateDue();
   updateWho();
-  form.subject?.addEventListener('change', () => { updateDue(); updateWho(); });
+  // напоминание: мини-календарь прямо в окне записи (только для дз — у заметок нет даты)
+  const picker = kind === 'hw' ? reminderPicker({ lessonDay: currentDue }) : null;
+  if (picker) root.querySelector('[data-rpick]').replaceWith(picker.el);
+  form.subject?.addEventListener('change', () => { updateDue(); updateWho(); picker?.setLesson(currentDue); });
   form.private.addEventListener('change', updateWho);
   form.text.focus();
 
@@ -525,6 +594,8 @@ function openComposer({ kind, subject = null, due = null }) {
     const picked = fileInput.files[0];
     if (!subj) return void (error.textContent = 'выбери предмет');
     if (!text && !picked) return void (error.textContent = kind === 'hw' ? 'напиши, что задали, или прикрепи файл' : 'пустая заметка');
+    const remindAt = picker?.value() ?? null;
+    if (remindAt && remindAt * 1000 <= Date.now()) return void (error.textContent = 'время напоминания уже прошло — выбери другое');
     const save = form.querySelector('[type="submit"]');
     save.disabled = true;
     if (picked) save.textContent = 'загружаю…';
@@ -534,16 +605,9 @@ function openComposer({ kind, subject = null, due = null }) {
         cls, subject: subj, due: kind === 'hw' ? currentDue : null, text, private: form.private.checked, file,
       });
       if (cls === state.cls) state.notes.push(note);
-      const remind = form.remind?.value;
-      if (remind === 'pick' && note.due) {
-        closeSheet();
-        render();
-        openReminder(note.id); // день и время — в окне напоминания
-        return;
-      }
-      if (remind && note.due) {
+      if (remindAt && note.due) {
         try {
-          const res = await saveReminder(note, quickReminderAt(note, remind));
+          const res = await saveReminder(note, remindAt);
           notify(`сохранил. напомню ${whenText(res.at)}`);
         } catch (err) {
           notify(`дз сохранено, но напоминание не включилось: ${err?.message || 'ошибка'}`);

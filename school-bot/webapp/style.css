@@ -1553,3 +1553,130 @@ input[type="date"].field {
 .sheet > .btn {
   flex: none;
 }
+
+/* --- Мини-календарь напоминаний --- */
+
+.remind-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--label) 5%, transparent);
+}
+
+.rpick {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rpick-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 16px;
+}
+
+.rpick-head .arrow {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 22px;
+  color: var(--accent);
+}
+
+.rpick-head .arrow:disabled {
+  opacity: 0.25;
+}
+
+.rpick-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+
+.rpick-wd {
+  font-size: 11px;
+  color: var(--label-2);
+  padding-bottom: 2px;
+}
+
+.rpick-day {
+  position: relative;
+  height: 36px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rpick-day.past {
+  opacity: 0.25;
+}
+
+.rpick-day.today {
+  color: var(--accent);
+}
+
+/* день урока — точка снизу */
+.rpick-day.lesson::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  border-radius: 50%;
+  background: #ff9f0a;
+}
+
+.rpick-day.sel {
+  color: var(--accent-text);
+  background: var(--accent);
+}
+
+.rpick-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rpick-quick:empty {
+  display: none;
+}
+
+.chip-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.chip-btn.on {
+  color: var(--accent-text);
+  background: var(--accent);
+}
+
+.rpick-hint {
+  font-size: 13px;
+  color: var(--label-2);
+}
+
+.remind-times[hidden] {
+  display: none;
+}
+
+/* длинное окно (с календарём) прокручивается, кнопки «сохранить» не уходят за экран */
+.sheet {
+  max-height: calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.rpick-grid > * {
+  min-width: 0;
+}
