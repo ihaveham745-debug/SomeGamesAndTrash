@@ -19,7 +19,7 @@ import {
 } from './schedule.js';
 import { CLASSES, MINI_APP_URL, PROFILES, TITLE, UTC_OFFSET_HOURS, classLabel, groupLabel } from './school.js';
 import {
-  REMIND_MODES, canSee, cleanText, fileFromMessage, fileLabel, findSubject, groupOf, groupsOf, lessonOn, nextLessonDate,
+  REMIND_TIMES, canSee, cleanText, fileFromMessage, fileLabel, findSubject, groupOf, groupsOf, lessonOn, nextLessonDate, quickReminderAt,
   validateNote,
 } from './homework.js';
 
@@ -344,7 +344,7 @@ async function homeworkCommand(kind, cls, args, message, nowMs, store) {
       inline_keyboard: [
         [button(`${shortDate(date)}`, 'd', cls, date)],
         // напоминания — только в личке: бот пишет человеку сам
-        ...(viewer && saved?.id ? [remindButtons(saved.id)] : []),
+        ...(viewer && saved?.id ? [[{ text: 'напомнить накануне:', callback_data: 'noop' }], remindButtons(saved.id), [customRemindButton(saved.id)]] : []),
       ],
     },
   };
@@ -416,14 +416,19 @@ export async function replyTo(message, nowMs = Date.now(), store = NO_STORE, pre
 }
 
 // --- Напоминания ---
-// Кнопки 'r:<id записи>:<mode>' — включить напоминание; 'r:<id>:off' — выключить.
+// Кнопки 'r:<id записи>:<ччмм>' — напомнить накануне урока в это время (0000 — в полночь перед уроком);
+// 'r:<id>:off' — выключить. Любой другой день — в приложении.
 
 function remindButtons(noteId) {
-  return [
-    { text: 'напомнить вечером', callback_data: `r:${noteId}:evening` },
-    { text: 'утром', callback_data: `r:${noteId}:morning` },
-    { text: 'перед уроком', callback_data: `r:${noteId}:before` },
-  ];
+  return REMIND_TIMES.map((t) => ({
+    text: t === '00:00' ? 'в 0:00' : t.replace(/^0/, ''),
+    callback_data: `r:${noteId}:${t.replace(':', '')}`,
+  }));
+}
+
+/** Любой другой день — в приложении: оно откроется сразу на этом дз. */
+function customRemindButton(noteId) {
+  return { text: 'напомнить в другой день', web_app: { url: `${MINI_APP_URL}?remind=${noteId}` } };
 }
 
 /** '21.10 в 19:00' — когда придёт напоминание (время местное). */
@@ -434,10 +439,11 @@ function whenText(at) {
 }
 
 /** Текст напоминания: что задано, к какому уроку, во сколько и где. */
-export function reminderMessage(cls, note, mode, nowMs = Date.now()) {
+export function reminderMessage(cls, note, nowMs = Date.now()) {
   const due = parseDate(note.due);
   const diff = Math.round((due.getTime() - today(nowMs).getTime()) / 86400000);
-  const whenDay = { 0: 'сегодня', 1: 'завтра' }[diff] ?? `${DAY_SHORT[weekday(due) - 1]}, ${dayMonth(due)}`;
+  const date = `${DAY_SHORT[weekday(due) - 1]}, ${dayMonth(due)}`;
+  const whenDay = { 0: 'сегодня', 1: 'завтра', 2: 'послезавтра' }[diff] ?? (diff < 0 ? `урок был ${date}` : date);
   const lesson = lessonOn(cls, note.due, note.subject);
   const where = lesson
     ? `${lesson.n} урок${lesson.start !== null ? `, ${hhmm(lesson.start)}` : ''}${lesson.room ? `, ${roomText(lesson.room)}` : ''}`
@@ -468,19 +474,20 @@ const FILE_HINT = [
  * { send: note } — прислать в чат файл записи; { denied } — файл недоступен.
  */
 export async function viewFor(data, chatId, nowMs = Date.now(), store = NO_STORE, prefs = memoryPrefs(), remind = null) {
-  const remindReq = /^r:(\d+):(evening|morning|before|off)$/.exec(data ?? '');
+  if (data === 'noop') return { notice: 'выбери время ниже' };
+  const remindReq = /^r:(\d+):(0900|1500|1800|0000|off)$/.exec(data ?? '');
   if (remindReq) {
     const viewer = viewerOf(chatId);
     const note = await store.get?.(Number(remindReq[1]));
     const cls = await prefs.get(chatId);
     if (!viewer || !remind || !isClass(cls) || !canSee(note, groupsOf(cls), viewer)) return { notice: 'напоминание недоступно' };
-    const mode = remindReq[2] === 'off' ? null : remindReq[2];
+    const at = remindReq[2] === 'off' ? null : quickReminderAt(note, `${remindReq[2].slice(0, 2)}:${remindReq[2].slice(2)}`);
     try {
-      const res = await remind.set(viewer, cls, note, mode, nowMs);
-      return { notice: res.mode ? `напомню ${REMIND_MODES[res.mode]}: ${whenText(res.at)}` : 'напоминание выключено' };
+      const res = await remind.set(viewer, cls, note, at, nowMs);
+      return { notice: res.at ? `напомню ${whenText(res.at)}` : 'напоминание выключено' };
     } catch (err) {
       if (err.message === 'PAST') return { notice: 'это время уже прошло — выбери другое' };
-      if (err.message === 'NO_LESSON') return { notice: 'не нашёл этот урок в расписании' };
+      if (err.message === 'BAD_TIME' || err.message === 'TOO_FAR') return { notice: 'не получилось, выбери время в приложении' };
       throw err;
     }
   }

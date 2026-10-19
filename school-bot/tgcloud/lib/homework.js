@@ -7,7 +7,7 @@
 // Так ДЗ по профильному уроку видят все из этой группы — и из 10а, и из 10б.
 
 import { CLASSES, TIMETABLE, UTC_OFFSET_HOURS } from './school.js';
-import { addDays, bell, fileLabel, isClass, lessonsFor, minutesNow, parseDate, today } from './schedule.js';
+import { addDays, bell, fileLabel, isClass, isoDate, lessonsFor, minutesNow, parseDate, today } from './schedule.js';
 
 export const MAX_NOTE_LENGTH = 1000;
 
@@ -156,28 +156,53 @@ export function validateNote({ cls, subject, due, text, fileId = null }) {
 }
 
 // --- Напоминания ---
-// Каждый сам включает напоминание о конкретном дз; бот пишет ему в личку.
-// mode: 'evening' — накануне в 19:00, 'morning' — в день урока в 7:30, 'before' — за 10 минут до урока.
+// Каждый сам включает себе напоминание о конкретном дз; бот пишет ему в личку.
+// Человек выбирает любой день и одно из четырёх времён (по Якутску).
 
-export const REMIND_MODES = {
-  evening: 'вечером накануне',
-  morning: 'утром в день урока',
-  before: 'за 10 минут до урока',
-};
+export const REMIND_TIMES = ['09:00', '15:00', '18:00', '00:00'];
+export const REMIND_TIME_LABELS = { '09:00': '9:00 утра', '15:00': '15:00 днём', '18:00': '18:00 вечера', '00:00': '0:00 ночью' };
+const MAX_AHEAD_DAYS = 366;
 
-/** Первый урок предмета в этот день у варианта: { n, start } или null. */
+/** Местное время (Якутск) → unix-секунды: localToUnix('2026-10-21', '18:00'). null — неверный ввод. */
+export function localToUnix(iso, hm) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso ?? '') || !/^\d{2}:\d{2}$/.test(hm ?? '')) return null;
+  const date = parseDate(iso);
+  if (Number.isNaN(date.getTime()) || isoDate(date) !== iso) return null;
+  const [h, m] = hm.split(':').map(Number);
+  if (h > 23 || m > 59) return null;
+  return date.getTime() / 1000 - UTC_OFFSET_HOURS * 3600 + (h * 60 + m) * 60;
+}
+
+/** unix-секунды → ['2026-10-21', '18:00'] по местному времени. */
+export function unixToLocal(at) {
+  const d = new Date((at + UTC_OFFSET_HOURS * 3600) * 1000).toISOString();
+  return [d.slice(0, 10), d.slice(11, 16)];
+}
+
+/** Первый урок предмета в этот день у варианта: { n, start, room } или null. */
 export function lessonOn(cls, iso, subject) {
   const lesson = lessonsFor(cls, parseDate(iso)).find((p) => p.subject === subject);
   return lesson ? { ...lesson, start: bell(lesson.n)?.start ?? null } : null;
 }
 
-/** Когда напомнить (unix-секунды) о записи note для варианта cls; null — нельзя (нет даты или урока). */
-export function reminderTime(cls, note, mode) {
-  if (!note?.due || !REMIND_MODES[mode]) return null;
-  const dayStart = parseDate(note.due).getTime() / 1000 - UTC_OFFSET_HOURS * 3600; // местная полночь
-  if (mode === 'evening') return dayStart - 5 * 3600; // 19:00 накануне
-  if (mode === 'morning') return dayStart + (7 * 60 + 30) * 60;
-  const lesson = lessonOn(cls, note.due, note.subject);
-  if (lesson?.start === null || lesson?.start === undefined) return null;
-  return dayStart + (lesson.start - 10) * 60;
+/**
+ * Можно ли напомнить в момент at (unix-секунды): время — одно из REMIND_TIMES,
+ * момент в будущем и не дальше чем через год. Ошибка: 'BAD_TIME' | 'PAST' | 'TOO_FAR' или null.
+ */
+export function reminderError(at, nowMs = Date.now()) {
+  if (!Number.isInteger(at)) return 'BAD_TIME';
+  if (!REMIND_TIMES.includes(unixToLocal(at)[1])) return 'BAD_TIME';
+  if (at * 1000 <= nowMs) return 'PAST';
+  if (at * 1000 > nowMs + MAX_AHEAD_DAYS * 86400000) return 'TOO_FAR';
+  return null;
+}
+
+/**
+ * Быстрые кнопки в чате: накануне урока в 9:00 / 15:00 / 18:00, а «0:00» — ночью перед уроком
+ * (полночь, с которой начинается день урока). null — у записи нет даты.
+ */
+export function quickReminderAt(note, hm) {
+  if (!note?.due || !REMIND_TIMES.includes(hm)) return null;
+  const day = hm === '00:00' ? note.due : isoDate(addDays(parseDate(note.due), -1));
+  return localToUnix(day, hm);
 }

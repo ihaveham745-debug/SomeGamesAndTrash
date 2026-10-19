@@ -1521,21 +1521,35 @@ textarea.field {
   fill: currentColor;
 }
 
-.remind-list {
-  display: flex;
-  flex-direction: column;
+.remind-label {
+  font-size: 14px;
+  color: var(--label-2);
+}
+
+.remind-times {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
-.remind-option {
-  padding: 12px 14px;
+.remind-time {
+  padding: 12px 10px;
   border-radius: 14px;
-  text-align: left;
   font-size: 16px;
   font-weight: 600;
   background: color-mix(in srgb, var(--label) 6%, transparent);
 }
 
-.remind-option.current {
-  box-shadow: inset 0 0 0 2px var(--accent);
+.remind-time.current {
+  color: var(--accent-text);
+  background: var(--accent);
+}
+
+input[type="date"].field {
+  color-scheme: dark;
+}
+
+/* кнопка прямо в окне (не в ряду) — обычной высоты */
+.sheet > .btn {
+  flex: none;
 }

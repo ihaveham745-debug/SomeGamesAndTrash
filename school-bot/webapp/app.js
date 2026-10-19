@@ -8,7 +8,7 @@ import {
 } from './lib/schedule.js';
 import { CLASSES, classLabel, groupLabel } from './lib/school.js';
 import {
-  MAX_FILE_MB, MAX_NOTE_LENGTH, REMIND_MODES, cleanText, fileLabel, groupOf, homeworkFor, nextLessonDate, subjectsOf,
+  MAX_FILE_MB, MAX_NOTE_LENGTH, REMIND_TIMES, REMIND_TIME_LABELS, cleanText, localToUnix, quickReminderAt, unixToLocal, fileLabel, groupOf, homeworkFor, nextLessonDate, subjectsOf,
 } from './lib/homework.js';
 
 const tg = window.Telegram?.WebApp;
@@ -56,9 +56,21 @@ async function loadNotes() {
     state.me = me;
     state.reminders = new Map(reminders.map((r) => [r.noteId, r]));
     render();
+    openPendingReminder();
   } catch (err) {
     console.warn('listNotes failed', err);
   }
+}
+
+// Кнопка «выбрать число и время» в чате открывает приложение с ?remind=<id записи>.
+let pendingRemind = Number(new URLSearchParams(location.search).get('remind')) || null;
+
+function openPendingReminder() {
+  const note = pendingRemind && state.notes.find((n) => n.id === pendingRemind);
+  if (!note) return;
+  pendingRemind = null;
+  if (note.due) go(schoolDay(parseDate(note.due)), 'day');
+  openReminder(note.id);
 }
 
 /** Класс из бота: если в личке уже выбран — берём его. */
@@ -180,43 +192,65 @@ function whenText(at) {
   return `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)} в ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 }
 
-async function saveReminder(note, mode) {
-  const res = await callBot('setReminder', { id: note.id, cls: state.cls, mode });
-  if (res.mode) state.reminders.set(note.id, { noteId: note.id, mode: res.mode, at: res.at });
+async function saveReminder(note, at) {
+  const res = await callBot('setReminder', { id: note.id, cls: state.cls, at });
+  if (res.at) state.reminders.set(note.id, { noteId: note.id, at: res.at });
   else state.reminders.delete(note.id);
   return res;
 }
 
+/** Окно напоминания: любой день и одно из четырёх времён. */
 function openReminder(id) {
   const note = state.notes.find((n) => n.id === id);
   if (!note) return;
   const current = state.reminders.get(id);
-  const options = Object.entries(REMIND_MODES).map(([mode, label]) => `<button type="button" class="remind-option press${current?.mode === mode ? ' current' : ''}" data-mode="${mode}">${esc(label)}</button>`).join('');
+  const todayIso = isoDate(today());
+  const eve = isoDate(addDays(parseDate(note.due), -1));
+  let [day, time] = current ? unixToLocal(current.at) : [eve < todayIso ? todayIso : eve, '18:00'];
+  if (!REMIND_TIMES.includes(time)) time = '18:00';
+  const chips = REMIND_TIMES.map((t) => `<button type="button" class="remind-time press${t === time ? ' current' : ''}" data-time="${t}">${esc(REMIND_TIME_LABELS[t])}</button>`).join('');
   const root = openSheet(`<div class="sheet glass blur">
     <div class="sheet-title">напомнить о дз</div>
     <div class="sheet-subject">${esc(note.subject)}</div>
-    <div class="sheet-due">${current ? `напомню ${esc(whenText(current.at))}` : 'бот напишет тебе в личку — только тебе'}</div>
-    <div class="remind-list">${options}</div>
+    <div class="sheet-due">${current ? `сейчас: напомню ${esc(whenText(current.at))}` : 'бот напишет тебе в личку — только тебе'}</div>
+    <div class="remind-label">день</div>
+    <input class="field" type="date" name="rdate" min="${todayIso}" value="${day}">
+    <div class="remind-label">время</div>
+    <div class="remind-times">${chips}</div>
     <div class="sheet-error" role="alert"></div>
+    <button class="btn primary press" type="button" data-save>напомнить</button>
     <div class="sheet-buttons">
-      ${current ? '<button class="btn press" type="button" data-mode="off">выключить</button>' : ''}
-      <button class="btn press" type="button" data-close>${current ? 'готово' : 'отмена'}</button>
+      ${current ? '<button class="btn press" type="button" data-off>выключить</button>' : ''}
+      <button class="btn press" type="button" data-close>отмена</button>
     </div>
   </div>`);
-  root.addEventListener('click', async (e) => {
-    const btn = e.target.closest('[data-mode]');
-    if (!btn) return;
-    const error = root.querySelector('.sheet-error');
+  const error = root.querySelector('.sheet-error');
+  const save = async (at) => {
     error.textContent = '';
     try {
-      const res = await saveReminder(note, btn.dataset.mode === 'off' ? null : btn.dataset.mode);
+      const res = await saveReminder(note, at);
       try { tg.HapticFeedback?.notificationOccurred('success'); } catch { /* старый клиент */ }
       closeSheet();
       render();
-      if (res.mode) notify(`напомню ${whenText(res.at)}`);
+      if (res.at) notify(`напомню ${whenText(res.at)}`);
     } catch (err) {
       error.textContent = err?.message || 'не получилось';
     }
+  };
+  root.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-time]');
+    if (chip) {
+      time = chip.dataset.time;
+      root.querySelectorAll('[data-time]').forEach((c) => c.classList.toggle('current', c === chip));
+      haptic();
+      return;
+    }
+    if (e.target.closest('[data-off]')) return void save(null);
+    if (!e.target.closest('[data-save]')) return;
+    const at = localToUnix(root.querySelector('[name="rdate"]').value, time);
+    if (at === null) return void (error.textContent = 'выбери день');
+    if (at * 1000 <= Date.now()) return void (error.textContent = 'это время уже прошло — выбери другое');
+    save(at);
   });
 }
 
@@ -421,7 +455,8 @@ function openComposer({ kind, subject = null, due = null }) {
     </label>
     ${kind === 'hw' ? `<select class="field" name="remind">
       <option value="">не напоминать</option>
-      ${Object.entries(REMIND_MODES).map(([mode, label]) => `<option value="${mode}">напомнить мне ${esc(label)}</option>`).join('')}
+      ${REMIND_TIMES.map((t) => `<option value="${t}">напомнить накануне в ${esc(REMIND_TIME_LABELS[t])}</option>`).join('')}
+      <option value="pick">напомнить в другой день…</option>
     </select>` : ''}
     <div class="sheet-error" role="alert"></div>
     <div class="sheet-buttons">
@@ -500,9 +535,15 @@ function openComposer({ kind, subject = null, due = null }) {
       });
       if (cls === state.cls) state.notes.push(note);
       const remind = form.remind?.value;
+      if (remind === 'pick' && note.due) {
+        closeSheet();
+        render();
+        openReminder(note.id); // день и время — в окне напоминания
+        return;
+      }
       if (remind && note.due) {
         try {
-          const res = await saveReminder(note, remind);
+          const res = await saveReminder(note, quickReminderAt(note, remind));
           notify(`сохранил. напомню ${whenText(res.at)}`);
         } catch (err) {
           notify(`дз сохранено, но напоминание не включилось: ${err?.message || 'ошибка'}`);
