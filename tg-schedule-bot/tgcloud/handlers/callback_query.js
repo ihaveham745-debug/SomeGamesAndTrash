@@ -3,7 +3,11 @@
 
 import { api, BotApiError } from 'sdk';
 import { viewFor } from '../lib/bot.js';
-import { store } from '../lib/notes.js';
+import { store as notesStore } from '../lib/notes.js';
+import { roomStore } from '../lib/rooms.js';
+
+// задания и заметки + замены аудиторий
+const store = { ...notesStore, rooms: roomStore };
 
 export default async function (query, ctx) {
   const view = await viewFor(query.data, Date.now(), store);

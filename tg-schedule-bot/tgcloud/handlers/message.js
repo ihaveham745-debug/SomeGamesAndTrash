@@ -4,7 +4,11 @@ import { api } from 'sdk';
 import {
   COMMANDS, DESCRIPTION, MENU_BUTTON, SHORT_DESCRIPTION, actionFor, commandMention, replyTo,
 } from '../lib/bot.js';
-import { store } from '../lib/notes.js';
+import { store as notesStore } from '../lib/notes.js';
+import { roomStore } from '../lib/rooms.js';
+
+// задания и заметки + замены аудиторий
+const store = { ...notesStore, rooms: roomStore };
 
 export default async function (message, ctx) {
   const reply = await replyTo(message, Date.now(), store);

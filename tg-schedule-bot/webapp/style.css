@@ -1156,3 +1156,58 @@ textarea.field {
 .btn:disabled {
   opacity: 0.5;
 }
+
+/* --- Замена аудитории --- */
+
+.place-btn {
+  padding: 2px 8px 2px 4px;
+  margin-left: -4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--label) 6%, transparent);
+}
+
+.place small {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--label-2);
+  text-decoration: line-through;
+}
+
+.place.changed {
+  color: #ff9f0a;
+  background: color-mix(in srgb, #ff9f0a 14%, transparent);
+}
+
+.wday li .r.changed {
+  color: #ff9f0a;
+}
+
+.scope {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.scope label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scope input {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+}
+
+.btn.reset {
+  flex: none;
+  color: #ff453a;
+}
+
+.sheet .hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--label-2);
+}

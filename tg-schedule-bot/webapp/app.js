@@ -3,8 +3,8 @@
 
 import {
   DAY_NAMES, DAY_SHORT, addDays, baseSubject, bell, dateRange, dayMonth, dayStatus, duration, hhmm,
-  inSemester, isSemesterWeek, isoDate, minutesNow, mondayOf, outOfSemester, pairsFor,
-  parityWord, parseDate, plural, shortType, today, weekNumber, weekday,
+  MAX_ROOM_LENGTH, inSemester, isSemesterWeek, isoDate, minutesNow, mondayOf, outOfSemester, pairBySlot, pairsFor,
+  parityWord, parseDate, plural, roomOverride, shortType, today, weekNumber, weekday,
 } from './lib/schedule.js';
 import { GROUP } from './lib/timetable.js';
 import { MAX_NOTE_LENGTH, SUBJECTS, cleanText, homeworkFor, nextPairDate } from './lib/homework.js';
@@ -14,7 +14,7 @@ const tg = window.Telegram?.WebApp;
 const inTelegram = Boolean(tg) && tg.platform !== 'unknown';
 const $ = (id) => document.getElementById(id);
 
-const state = { view: 'day', date: firstDay(), notes: [], me: null };
+const state = { view: 'day', date: firstDay(), notes: [], rooms: [], me: null };
 
 // Записывать и удалять задания можно только из Telegram: сервер проверяет, кто это.
 const canWrite = inTelegram && Boolean(tg.initData) && typeof tg.Serverless?.call === 'function';
@@ -29,8 +29,9 @@ function callBot(name, input = {}) {
 async function loadNotes() {
   if (!canWrite) return;
   try {
-    const { notes, me } = await callBot('listNotes');
+    const { notes, me, rooms = [] } = await callBot('listNotes');
     state.notes = notes;
+    state.rooms = rooms;
     state.me = me;
     render();
   } catch (err) {
@@ -100,6 +101,15 @@ function placeHtml(room) {
   return `<span class="place">${/онлайн/i.test(room) ? ICON.laptop : ICON.pin}${esc(room)}</span>`;
 }
 
+/** Аудитория пары: в Telegram — кнопка «поменять»; если поменяли — подсвечена и «вместо …». */
+function roomHtml(p, iso) {
+  const icon = /онлайн/i.test(p.room ?? '') ? ICON.laptop : ICON.pin;
+  const was = p.roomWas ? `<small>${esc(p.roomWas)}</small>` : '';
+  const inner = `${icon}${esc(p.room || 'аудитория?')}${was}`;
+  if (!canWrite) return p.room ? `<span class="place${p.roomWas ? ' changed' : ''}">${inner}</span>` : '';
+  return `<button class="place place-btn press${p.roomWas ? ' changed' : ''}" type="button" data-room="${esc(p.slot)}" data-iso="${iso}" aria-label="поменять аудиторию">${inner}</button>`;
+}
+
 /** Следующий/предыдущий учебный день: воскресенье пропускаем. */
 function stepDay(date, forward) {
   const wd = weekday(date);
@@ -165,7 +175,7 @@ function pairHtml(p, when, minutes, iso) {
     <div class="time">${time ? `<b>${hhmm(time.start)}</b><span>${hhmm(time.end)}</span>` : ''}<span class="n">${p.n} пара</span></div>
     <div class="info">
       <div class="subject">${esc(name)}</div>
-      <div class="meta">${chips.join('')}${p.room ? placeHtml(p.room) : ''}</div>
+      <div class="meta">${chips.join('')}${roomHtml(p, iso)}</div>
       ${p.teacher ? `<div class="line">${ICON.person}${esc(p.teacher)}</div>` : ''}
       ${pairHomeworkHtml(p, iso)}
     </div>${progress}
@@ -183,7 +193,7 @@ function dayHtml(date) {
   const title = `<h2 class="day-title">${cap(DAY_NAMES[weekday(date) - 1])}, ${dayMonth(date)}${label ? ` <span class="badge">${label}</span>` : ''}</h2>`;
   if (!inSemester(date)) return `<div class="day-head">${title}</div>${outOfSemesterHtml(date)}`;
 
-  const pairs = pairsFor(date);
+  const pairs = pairsFor(date, state.rooms);
   if (pairs.length === 0) {
     return `<div class="day-head">${title}<p class="summary">${weekNumber(date)}-я неделя, ${parityWord(date)}</p></div>${emptyHtml('🎉', 'Пар нет', 'Можно отдыхать')}`;
   }
@@ -219,7 +229,7 @@ function weekHtml(date) {
   const sections = [];
   for (let i = 0; i < 7; i++) {
     const day = addDays(monday, i);
-    const pairs = pairsFor(day);
+    const pairs = pairsFor(day, state.rooms);
     if (i === 6 && pairs.length === 0) continue; // пустое воскресенье не показываем
 
     const isToday = same(day, now);
@@ -227,7 +237,7 @@ function weekHtml(date) {
       const time = bell(p.n);
       const type = p.type ? ` <span class="t">${esc(shortType(p.type))}</span>` : '';
       const hw = homeworkFor(state.notes, isoDate(day), p.subject).length ? ' <span class="hw-mark">📝</span>' : '';
-      return `<li><b>${time ? hhmm(time.start) : `${p.n}.`}</b><span>${esc(p.subject)}${type}${hw}</span><span class="r">${esc(p.room ?? '')}</span></li>`;
+      return `<li><b>${time ? hhmm(time.start) : `${p.n}.`}</b><span>${esc(p.subject)}${type}${hw}</span><span class="r${p.roomWas ? ' changed' : ''}">${esc(p.room ?? '')}</span></li>`;
     });
     sections.push(`<section class="wday glass${isToday ? ' is-today' : ''}">
       <button class="wday-head" type="button" data-date="${isoDate(day)}">
@@ -351,6 +361,71 @@ function openComposer({ kind, subject = null, due = null }) {
   });
 }
 
+// --- Замена аудитории ---
+
+const EVERY_WEEKDAY = ['по понедельникам', 'по вторникам', 'по средам', 'по четвергам', 'по пятницам', 'по субботам', 'по воскресеньям'];
+
+/** Окно «поменять аудиторию»: только на этот день или каждую неделю; можно вернуть как было. */
+function openRoomEditor(slot, iso) {
+  closeComposer();
+  const pair = pairBySlot(slot);
+  if (!pair) return;
+  const date = parseDate(iso);
+  const dayOnly = state.rooms.find((r) => r.slot === slot && r.date === iso);
+  const always = state.rooms.find((r) => r.slot === slot && r.date === '');
+  const current = roomOverride(state.rooms, slot, iso);
+  const weekdayName = DAY_NAMES[weekday(date) - 1];
+  const everyText = `всегда — ${EVERY_WEEKDAY[weekday(date) - 1]}${pair.week ? (pair.week === 'odd' ? ' нечётной недели' : ' чётной недели') : ''}`;
+  const root = document.createElement('div');
+  root.className = 'sheet-backdrop';
+  root.innerHTML = `<form class="sheet glass blur" autocomplete="off">
+    <div class="sheet-title">Аудитория</div>
+    <div class="sheet-subject">${esc(pair.subject)}</div>
+    <div class="sheet-due">${pair.n} пара · по расписанию: ${esc(pair.room || '—')}${current?.authorName ? ` · поменял(а) ${esc(current.authorName)}` : ''}</div>
+    <input class="field" name="room" maxlength="${MAX_ROOM_LENGTH}" placeholder="Например: 305 или 228 КФЕН" value="${esc(current?.room ?? '')}">
+    <div class="scope">
+      <label><input type="radio" name="scope" value="day"${always && !dayOnly ? '' : ' checked'}> только ${esc(weekdayName)}, ${esc(dayMonth(date))}</label>
+      <label><input type="radio" name="scope" value="always"${always && !dayOnly ? ' checked' : ''}> ${esc(everyText)}</label>
+    </div>
+    <div class="sheet-error" role="alert"></div>
+    <div class="sheet-buttons">
+      <button class="btn press" type="button" data-close>Отмена</button>
+      <button class="btn primary press" type="submit">Сохранить</button>
+    </div>
+    ${dayOnly || always ? `<button class="btn press reset" type="button" data-reset>Вернуть как в расписании</button>` : ''}
+    <p class="hint">Замену видят все в группе — и в боте, и в приложении.</p>
+  </form>`;
+  document.body.append(root);
+  const form = root.querySelector('form');
+  const error = root.querySelector('.sheet-error');
+  const scopeDate = () => (form.scope.value === 'always' ? '' : iso);
+  const send = async (room, date) => {
+    try {
+      const res = await callBot('setRoom', { slot, date, room });
+      state.rooms = res.rooms;
+      try { tg.HapticFeedback?.notificationOccurred('success'); } catch { /* старый клиент */ }
+      closeComposer();
+      render();
+    } catch (err) {
+      error.textContent = err?.message || 'Не получилось сохранить';
+    }
+  };
+  root.addEventListener('click', (e) => {
+    if (e.target === root || e.target.closest('[data-close]')) return void closeComposer();
+    if (e.target.closest('[data-reset]')) {
+      // «вернуть»: убираем замену на этот день, а если её нет — постоянную
+      send(null, dayOnly ? iso : '');
+    }
+  });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const room = form.room.value.trim();
+    if (!room) return void (error.textContent = 'Напиши аудиторию');
+    send(room, scopeDate());
+  });
+  form.room.focus();
+}
+
 function closeComposer() {
   document.querySelector('.sheet-backdrop')?.remove();
 }
@@ -447,9 +522,10 @@ function go(date, view = state.view) {
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('.sheet-backdrop')) return;
-  const el = e.target.closest('[data-add], [data-del], [data-date], [data-view], #prev-week, #next-week, #to-today');
+  const el = e.target.closest('[data-add], [data-del], [data-room], [data-date], [data-view], #prev-week, #next-week, #to-today');
   if (!el) return;
-  if (el.dataset.add) openComposer({ kind: el.dataset.add, subject: el.dataset.subject, due: el.dataset.due });
+  if (el.dataset.room) openRoomEditor(el.dataset.room, el.dataset.iso);
+  else if (el.dataset.add) openComposer({ kind: el.dataset.add, subject: el.dataset.subject, due: el.dataset.due });
   else if (el.dataset.del) deleteNote(Number(el.dataset.del));
   else if (el.dataset.date) go(parseDate(el.dataset.date), 'day');
   else if (el.dataset.view) go(state.date, el.dataset.view);

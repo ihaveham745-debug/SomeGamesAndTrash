@@ -6,10 +6,11 @@
 //   store.range(from, to) — записи с due в этих датах ('ГГГГ-ММ-ДД' включительно);
 //   store.upcoming(from)  — задания с due >= from и все заметки (due = null);
 //   store.add(note)       — сохранить запись.
+// Замены аудиторий — store.rooms (в боте lib/rooms.js): all() / set(...) / clear(slot, date).
 
 import {
   DAY_SHORT, addDays, dayMonth, ddmm, escapeHtml, formatDay, formatParity, formatWeek,
-  isSemesterWeek, isoDate, mondayOf, parseDate, today, weekNumber, weekday,
+  isSemesterWeek, isoDate, mondayOf, pairsFor, parseDate, today, validateRoomChange, weekNumber, weekday,
 } from './schedule.js';
 import { GROUP, MINI_APP_URL } from './timetable.js';
 import { cleanText, findSubject, nextPairDate, validateNote } from './homework.js';
@@ -21,6 +22,9 @@ export const NO_STORE = {
     throw new Error('store is not available');
   },
 };
+
+const NO_ROOMS = { all: async () => [], set: async () => { throw new Error('rooms are not available'); }, clear: async () => false };
+const roomsOf = (store) => store.rooms ?? NO_ROOMS;
 
 // Тексты кнопок не меняй: по ним узнаём нажатия, а у людей уже стоит эта клавиатура.
 export const BUTTONS = {
@@ -49,6 +53,7 @@ export const COMMANDS = [
   { command: 'parity', description: '🔢 Чётная или нечётная неделя' },
   { command: 'dz', description: '📝 Домашние задания (или /dz мат: текст)' },
   { command: 'note', description: '🗒 Заметка к предмету: /note хим: текст' },
+  { command: 'aud', description: '🚪 Поменять аудиторию: /aud 2 305' },
   { command: 'help', description: '💬 Что умеет бот' },
 ];
 
@@ -82,6 +87,7 @@ const HELP_TEXT = [
   '',
   'Записать ДЗ к ближайшей паре: <code>/dz мат: №5–10</code>',
   'Заметка к предмету: <code>/note хим: формулы на стр. 12</code>',
+  'Аудитория поменялась: <code>/aud 2 305</code> — 2-я пара сегодня (подробнее — /aud)',
   '',
   'Стрелки ◀️ ▶️ под расписанием листают дни и недели прямо в сообщении.',
   'А кнопка <b>«Расписание»</b> слева от поля ввода открывает приложение — там всё то же, но удобнее.',
@@ -142,14 +148,91 @@ function weekKeyboard(date, nowMs) {
 }
 
 async function dayView(date, nowMs, store) {
-  const notes = await store.range(isoDate(date), isoDate(date));
-  return { text: formatDay(date, nowMs, notes), reply_markup: dayKeyboard(date, nowMs) };
+  const [notes, rooms] = await Promise.all([store.range(isoDate(date), isoDate(date)), roomsOf(store).all()]);
+  return { text: formatDay(date, nowMs, notes, rooms), reply_markup: dayKeyboard(date, nowMs) };
 }
 
 async function weekView(date, nowMs, store) {
   const monday = mondayOf(date);
-  const notes = await store.range(isoDate(monday), isoDate(addDays(monday, 6)));
-  return { text: formatWeek(date, nowMs, notes), reply_markup: weekKeyboard(date, nowMs) };
+  const [notes, rooms] = await Promise.all([store.range(isoDate(monday), isoDate(addDays(monday, 6))), roomsOf(store).all()]);
+  return { text: formatWeek(date, nowMs, notes, rooms), reply_markup: weekKeyboard(date, nowMs) };
+}
+
+// --- Замена аудитории: /aud ---
+
+const AUD_USAGE = [
+  '🚪 <b>Поменять аудиторию</b>',
+  '',
+  '<code>/aud 2 305</code> — 2-я пара сегодня в 305',
+  '<code>/aud 24.10 3 228 КФЕН</code> — 3-я пара 24 октября',
+  '<code>/aud 2 305 всегда</code> — каждую неделю (эта пара в этот день недели)',
+  '<code>/aud 2 сброс</code> — вернуть как в расписании (<code>сброс всегда</code> — убрать постоянную замену)',
+  '',
+  'Видят все в группе. Удобнее — в приложении: нажми на аудиторию у пары.',
+].join('\n');
+
+/** '24.10' → '2026-10-24' (ближайшая такая дата не раньше полугода назад); null — не дата. */
+function parseDayMonth(text, nowMs) {
+  const m = /^(\d{1,2})\.(\d{1,2})$/.exec(text);
+  if (!m) return null;
+  const t = today(nowMs);
+  for (const year of [t.getUTCFullYear(), t.getUTCFullYear() + 1]) {
+    const iso = `${year}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    const d = parseDate(iso);
+    if (isoDate(d) !== iso) return null;
+    if (d.getTime() >= addDays(t, -183).getTime()) return iso;
+  }
+  return null;
+}
+
+async function roomCommand(args, message, nowMs, store) {
+  const words = args.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return { text: AUD_USAGE };
+  let iso = isoDate(today(nowMs));
+  const date = parseDayMonth(words[0], nowMs);
+  if (date) {
+    iso = date;
+    words.shift();
+  }
+  const n = Number(words.shift());
+  const always = words.at(-1)?.toLowerCase() === 'всегда';
+  if (always) words.pop();
+  const roomText = words.join(' ').trim();
+  if (!Number.isInteger(n) || !roomText) return { text: `🤔 Не понял.\n\n${AUD_USAGE}` };
+
+  const day = parseDate(iso);
+  const pairs = pairsFor(day).filter((p) => p.n === n);
+  const when = `${DAY_SHORT[weekday(day) - 1]}, ${dayMonth(day)}`;
+  if (pairs.length === 0) return { text: `🤔 ${when} ${n}-й пары нет.\n\n${AUD_USAGE}` };
+  if (pairs.length > 1) return { text: `🤔 ${when} на ${n}-й паре несколько занятий — поменяй в приложении, нажав на аудиторию.` };
+  const pair = pairs[0];
+  const target = always ? '' : iso;
+  const reset = roomText.toLowerCase() === 'сброс';
+  const rooms = roomsOf(store);
+  const keyboard = { inline_keyboard: [[button(`📅 ${shortDate(day)}`, 'd', day)]] };
+  const what = `<b>${escapeHtml(pair.subject)}</b>, ${n}-я пара`;
+
+  if (reset) {
+    const removed = await rooms.clear(pair.slot, target);
+    return {
+      text: removed
+        ? `✅ ${what}: ${always ? 'постоянная замена убрана' : `замена на ${when} убрана`} — снова ${escapeHtml(pair.room ?? '')}.`
+        : `🤔 У ${what} ${always ? 'постоянной замены' : `замены на ${when}`} не было.`,
+      reply_markup: keyboard,
+    };
+  }
+  const error = validateRoomChange({ slot: pair.slot, date: target, room: roomText });
+  if (error) return { text: `🤔 ${escapeHtml(error)}\n\n${AUD_USAGE}` };
+  try {
+    await rooms.set({ slot: pair.slot, date: target, room: roomText, authorId: message.from?.id ?? 0, authorName: authorName(message.from) });
+  } catch (err) {
+    console.error('rooms.set failed', err);
+    return { text: '😕 Не получилось сохранить, попробуй ещё раз чуть позже.' };
+  }
+  return {
+    text: `✅ ${what} — теперь в <b>${escapeHtml(roomText)}</b> ${always ? `каждую неделю (${DAY_SHORT[weekday(day) - 1]})` : `на ${when}`}.\nПо расписанию было ${escapeHtml(pair.room ?? '—')}. Видят все в группе.`,
+    reply_markup: keyboard,
+  };
 }
 
 // --- Домашние задания и заметки ---
@@ -262,6 +345,7 @@ const ACTIONS = {
   parity: async (now) => parityView(now),
   dz: (now, store, message, args) => homeworkCommand('hw', args, message, now, store),
   note: (now, store, message, args) => homeworkCommand('note', args, message, now, store),
+  aud: (now, store, message, args) => (args ? roomCommand(args, message, now, store) : { text: AUD_USAGE }),
 };
 
 const COMMAND = /^\/([a-z_]+)(?:@(\w+))?(?:\s|$)/i;

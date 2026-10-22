@@ -89,14 +89,44 @@ export function baseSubject(subject) {
   return subject.replace(/\s*\(подгр\.[^)]*\)$/, '');
 }
 
-export function pairsFor(date) {
+// --- Замена аудитории ---
+// Аудиторию пары можно поменять: на один день (date = 'ГГГГ-ММ-ДД') или «всегда» (date = '').
+// Замена rooms: { slot, date, room, authorName }. slot — какая это пара в расписании:
+// '3|2|odd|Физика (подгр. А)' — день недели, номер, неделя ('' — каждая), предмет.
+
+export const pairSlot = (wd, p) => `${wd}|${p.n}|${p.week ?? ''}|${p.subject}`;
+
+/** Пара расписания по slot или null. */
+export function pairBySlot(slot) {
+  const wd = Number(String(slot).split('|')[0]);
+  return (TIMETABLE[wd] ?? []).find((p) => pairSlot(wd, p) === slot) ?? null;
+}
+
+/** Замена для пары в этот день: на этот день важнее, чем «всегда». */
+export function roomOverride(rooms, slot, iso) {
+  return rooms.find((r) => r.slot === slot && r.date === iso) ?? rooms.find((r) => r.slot === slot && r.date === '') ?? null;
+}
+
+/**
+ * Пары дня. rooms — замены аудиторий из базы: у пары с заменой room — новая аудитория,
+ * roomWas — какая была по расписанию, roomBy — кто поменял, roomDay — замена только на этот день.
+ * slot у каждой пары — чтобы приложение могло её поменять.
+ */
+export function pairsFor(date, rooms = []) {
   if (!inSemester(date)) return [];
   const parity = isOddWeek(date) ? 'odd' : 'even';
   const iso = isoDate(date);
-  return (TIMETABLE[weekday(date)] ?? [])
+  const wd = weekday(date);
+  return (TIMETABLE[wd] ?? [])
     .filter((p) => !p.week || p.week === parity)
     .filter((p) => !p.until || iso <= p.until)
-    .sort((a, b) => a.n - b.n);
+    .sort((a, b) => a.n - b.n)
+    .map((p) => {
+      const slot = pairSlot(wd, p);
+      const o = roomOverride(rooms, slot, iso);
+      if (!o || o.room === p.room) return { ...p, slot };
+      return { ...p, slot, room: o.room, roomWas: p.room, roomBy: o.authorName ?? null, roomDay: o.date !== '' };
+    });
 }
 
 // --- Мелочи для текста ---
@@ -212,7 +242,7 @@ function pairCard(p, isNow, homework = []) {
     .join(' ');
   const title = `<b>${escapeHtml(p.subject)}</b>` + (p.type ? ` · <i>${escapeHtml(p.type)}</i>` : '');
   const details = [
-    p.room && `${placeIcon(p.room)} ${escapeHtml(p.room)}`,
+    p.room && `${placeIcon(p.room)} ${escapeHtml(p.room)}${p.roomWas ? ` <i>(вместо ${escapeHtml(p.roomWas)})</i>` : ''}`,
     p.teacher && `👤 ${escapeHtml(p.teacher)}`,
   ].filter(Boolean);
   const hw = homework.map((n) => `📝 ${escapeHtml(n.text)}${n.authorName ? ` <i>— ${escapeHtml(n.authorName)}</i>` : ''}`);
@@ -228,13 +258,13 @@ function gapLine(fromN, toN) {
 }
 
 /** notes — записи из базы; у пар показываются задания к этой дате. */
-export function formatDay(date, nowMs = Date.now(), notes = []) {
+export function formatDay(date, nowMs = Date.now(), notes = [], rooms = []) {
   const label = relativeDay(date, nowMs);
   const name = `${DAY_NAMES[weekday(date) - 1]}, ${dayMonth(date)}`;
   const header = `📅 <b>${label ? `${label} · ${name}` : capitalize(name)}</b>`;
   if (!inSemester(date)) return `${header}\n\n${outOfSemester(date)}`;
 
-  const pairs = pairsFor(date);
+  const pairs = pairsFor(date, rooms);
   if (pairs.length === 0) return `${header}\n<i>${weekLine(date)}</i>\n\nПар нет — отдыхаем 🎉`;
 
   const first = bell(pairs[0].n);
@@ -258,7 +288,7 @@ export function formatDay(date, nowMs = Date.now(), notes = []) {
   return `${intro.join('\n')}\n\n${body.join('\n')}`;
 }
 
-export function formatWeek(date, nowMs = Date.now(), notes = []) {
+export function formatWeek(date, nowMs = Date.now(), notes = [], rooms = []) {
   const monday = mondayOf(date);
   const sunday = addDays(monday, 6);
   if (!isSemesterWeek(monday)) {
@@ -269,7 +299,7 @@ export function formatWeek(date, nowMs = Date.now(), notes = []) {
   const parts = [`🗓 <b>${weekLine(monday)}</b>\n<i>${dateRange(monday, sunday)}</i>`];
   for (let i = 0; i < 7; i++) {
     const day = addDays(monday, i);
-    const pairs = pairsFor(day);
+    const pairs = pairsFor(day, rooms);
     if (pairs.length === 0 && i === 6) continue; // пустое воскресенье не показываем
 
     const mark = day.getTime() === todayMs ? ' 👈 сегодня' : '';
@@ -282,7 +312,7 @@ export function formatWeek(date, nowMs = Date.now(), notes = []) {
       const time = bell(p.n);
       let line = `${time ? `<b>${hhmm(time.start)}</b>` : `${p.n}.`} ${escapeHtml(p.subject)}`;
       if (p.type) line += ` <i>${escapeHtml(shortType(p.type))}</i>`;
-      if (p.room) line += ` · ${placeIcon(p.room)} ${escapeHtml(p.room)}`;
+      if (p.room) line += ` · ${placeIcon(p.room)} ${escapeHtml(p.room)}${p.roomWas ? '*' : ''}`;
       if (notes.some((n) => n.due === isoDate(day) && n.subject === baseSubject(p.subject))) line += ' 📝';
       return line;
     });
@@ -304,4 +334,25 @@ export function formatParity(date) {
     lines.push('', `Следующая (${dateRange(next, addDays(next, 6))}) — ${weekNumber(next)}-я, ${parityWord(next)}.`);
   }
   return lines.join('\n');
+}
+
+export const MAX_ROOM_LENGTH = 30;
+
+/**
+ * Проверка замены аудитории: { slot, date, room } → текст ошибки или null.
+ * date — '' («всегда») или день, в который эта пара есть в расписании; room — пусто = вернуть как было.
+ */
+export function validateRoomChange({ slot, date, room }) {
+  const pair = pairBySlot(slot);
+  if (!pair) return 'Нет такой пары в расписании';
+  if (date !== '') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '') || isoDate(parseDate(date)) !== date) return 'Неверная дата';
+    if (!pairsFor(parseDate(date)).some((p) => p.slot === slot)) return 'В этот день такой пары нет';
+  }
+  if (room !== null && room !== undefined) {
+    const clean = String(room).trim();
+    if (!clean) return 'Напиши аудиторию';
+    if (clean.length > MAX_ROOM_LENGTH) return `Слишком длинно: больше ${MAX_ROOM_LENGTH} символов`;
+  }
+  return null;
 }
