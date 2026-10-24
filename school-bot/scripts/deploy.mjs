@@ -20,6 +20,19 @@ const run = (...args) => execFileSync('npx', ['tgcloud', ...args], { stdio: 'inh
 
 if (!existsSync(new URL('../.tgcloud/state.json', import.meta.url))) run('fetch');
 execFileSync('node', [new URL('./build.mjs', import.meta.url).pathname], { stdio: 'inherit' });
-run('push');
+// tgcloud иногда падает уже после загрузки (пишет в свой снимок false вместо текста модуля).
+// Тогда сверяемся с сервером: если загружать больше нечего — всё выложилось, идём дальше.
+try {
+  run('push');
+} catch {
+  console.warn('\npush упал — сверяю с сервером…');
+  run('fetch');
+  const status = execFileSync('npx', ['tgcloud', 'status'], { env, encoding: 'utf8' });
+  if (!/Working directory clean/.test(status)) {
+    console.error(status);
+    process.exit(1);
+  }
+  console.warn('на сервере всё новое — продолжаю');
+}
 // Новые таблицы и столбцы; удаление данных (--safe) не применяем.
 run('migrate', '--safe');

@@ -1680,3 +1680,80 @@ input[type="date"].field {
 .rpick-grid > * {
   min-width: 0;
 }
+
+/* --- Консультации --- */
+
+.consult-day {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.consult-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 22px;
+  text-align: left;
+  font-size: 16px;
+}
+
+.consult-card span {
+  flex: 1;
+  font-weight: 600;
+}
+
+.consult-card .bell-on svg {
+  width: 18px;
+  height: 18px;
+  fill: #ffd60a;
+  stroke: #ffd60a;
+}
+
+.consult-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.consult-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--label) 6%, transparent);
+}
+
+.consult-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.consult-info small {
+  font-size: 13px;
+  color: var(--label-2);
+}
+
+.consult-info small.on {
+  color: #ffd60a;
+}
+
+.wd-chips {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.wd-chips .remind-time {
+  padding: 10px 0;
+  font-size: 14px;
+}
+
+.weekly-day[hidden] {
+  display: none;
+}

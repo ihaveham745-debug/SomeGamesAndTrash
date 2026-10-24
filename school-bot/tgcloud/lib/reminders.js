@@ -7,9 +7,11 @@
 
 import { api, db, BotApiError } from 'sdk';
 import { and, asc, eq, inArray, lte } from 'sdk/db';
-import { reminders } from '../schema.js';
+import { reminders, weekly } from '../schema.js';
+import { consultByKey, nextWeekly } from './consults.js';
+import { myConsults } from './consultStore.js';
 import { canSee, groupsOf, reminderError, unixToLocal } from './homework.js';
-import { reminderMessage } from './bot.js';
+import { consultReminderMessage, reminderMessage } from './bot.js';
 import { store } from './notes.js';
 
 const STALE_SECONDS = 6 * 3600; // проспали дольше 6 часов — уже не напоминаем
@@ -38,8 +40,43 @@ export function remindersOf(userId) {
     .from(reminders).where(and(eq(reminders.userId, userId), eq(reminders.sent, false))).all();
 }
 
-/** Разослать напоминания, чьё время пришло. Возвращает, сколько отправлено. */
+/** Разослать напоминания, чьё время пришло (о дз и о консультациях). Возвращает, сколько отправлено. */
 export async function sendDueReminders(nowMs = Date.now()) {
+  return (await sendHomeworkReminders(nowMs)) + (await sendWeeklyReminders(nowMs));
+}
+
+async function deliver(userId, { text, reply_markup }) {
+  try {
+    await api.sendMessage({ chat_id: userId, text, parse_mode: 'HTML', reply_markup });
+    return 1;
+  } catch (err) {
+    if (!(err instanceof BotApiError)) throw err;
+    console.warn('reminder not delivered', userId, err.description); // например, бот заблокирован
+    return 0;
+  }
+}
+
+/** Консультации: напоминание каждую неделю — отправили и сразу переносим на следующую неделю. */
+async function sendWeeklyReminders(nowMs) {
+  const now = Math.floor(nowMs / 1000);
+  const due = await db.select().from(weekly).where(lte(weekly.at, now)).orderBy(asc(weekly.at)).limit(BATCH).all();
+  let sent = 0;
+  for (const w of due) {
+    // Переносим только если никто не успел раньше (at не поменялся) — так одно напоминание не уйдёт дважды.
+    const next = nextWeekly({ weekday: w.weekday, minutes: w.minutes }, nowMs);
+    const moved = await db.update(weekly).set({ at: next }).where(and(eq(weekly.id, w.id), eq(weekly.at, w.at))).run();
+    if (!moved.rowsAffected || now - w.at > STALE_SECONDS) continue;
+    const consult = consultByKey(w.key, w.key.startsWith('my:') ? await myConsults(w.userId) : []);
+    if (!consult) {
+      await db.delete(weekly).where(eq(weekly.id, w.id)).run(); // консультацию удалили
+      continue;
+    }
+    sent += await deliver(w.userId, consultReminderMessage(consult, nowMs));
+  }
+  return sent;
+}
+
+async function sendHomeworkReminders(nowMs) {
   const now = Math.floor(nowMs / 1000);
   const due = await db.select().from(reminders)
     .where(and(eq(reminders.sent, false), lte(reminders.at, now))).orderBy(asc(reminders.at)).limit(BATCH).all();
@@ -53,14 +90,7 @@ export async function sendDueReminders(nowMs = Date.now()) {
     if (now - r.at > STALE_SECONDS) continue;
     const note = await store.get(r.noteId);
     if (!note || !canSee(note, groupsOf(r.cls), r.userId)) continue; // запись удалили или она больше не видна
-    const { text, reply_markup } = reminderMessage(r.cls, note, nowMs);
-    try {
-      await api.sendMessage({ chat_id: r.userId, text, parse_mode: 'HTML', reply_markup });
-      sent += 1;
-    } catch (err) {
-      if (!(err instanceof BotApiError)) throw err;
-      console.warn('reminder not delivered', r.userId, err.description); // например, бот заблокирован
-    }
+    sent += await deliver(r.userId, reminderMessage(r.cls, note, nowMs));
   }
   return sent;
 }

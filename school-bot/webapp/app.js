@@ -8,6 +8,10 @@ import {
 } from './lib/schedule.js';
 import { CLASSES, classLabel, groupLabel } from './lib/school.js';
 import {
+  BEFORE_START, EVERY_WEEKDAY, SHARED_CONSULTS, WEEKDAY_NAMES, WEEKLY_TIMES, consultsOn, fromMinutes, validateConsult,
+  weeklySlot, weeklyText,
+} from './lib/consults.js';
+import {
   MAX_FILE_MB, MAX_NOTE_LENGTH, REMIND_TIMES, REMIND_TIME_LABELS, cleanText, localToUnix, quickReminderAt, unixToLocal, fileLabel, groupOf, homeworkFor, nextLessonDate, subjectsOf,
 } from './lib/homework.js';
 
@@ -364,7 +368,7 @@ function dayHtml(date) {
 
   const lessons = lessonsFor(state.cls, date);
   if (lessons.length === 0) {
-    return `<div class="day-head">${title}</div>${emptyHtml('уроков нет', 'можно отдыхать')}`;
+    return `<div class="day-head">${title}</div>${emptyHtml('уроков нет', 'можно отдыхать')}${consultsDayHtml(date)}`;
   }
 
   const first = bell(lessons[0].n);
@@ -385,7 +389,7 @@ function dayHtml(date) {
   });
 
   return `<div class="day-head">${title}<p class="summary">${lessonsWord(lessons.length)}${span}</p></div>
-    ${status ? statusHtml(status, minutes) : ''}<ol class="pairs">${items.join('')}</ol>`;
+    ${status ? statusHtml(status, minutes) : ''}<ol class="pairs">${items.join('')}</ol>${consultsDayHtml(date)}`;
 }
 
 // --- Неделя ---
@@ -699,6 +703,191 @@ async function deleteNote(id) {
   }
 }
 
+// --- Консультации ---
+// Общие — профмат «90+» (пн) и «80+» (вт), их видят все. Свои добавляет каждый сам — видит только он.
+// Напоминание — каждую неделю в выбранный день и время, бот пишет в личку.
+
+const consultState = { mine: [], weekly: new Map() };
+const openConsultsOnLoad = new URLSearchParams(location.search).get('consult') === '1';
+
+async function loadConsults() {
+  if (!canWrite) return void (openConsultsOnLoad && openConsults());
+  try {
+    const { mine, weekly } = await callBot('listConsults');
+    consultState.mine = mine.map((c) => ({ ...c, start: c.start, end: c.end }));
+    consultState.weekly = new Map(weekly.map((w) => [w.key, w]));
+    render();
+  } catch (err) {
+    console.warn('listConsults failed', err);
+  }
+  if (openConsultsOnLoad) openConsults();
+}
+
+// для consultsOn — свои в виде строк базы (myConsult превратит их обратно)
+const mineRows = () => consultState.mine.map((c) => ({ id: c.id, title: c.title, weekday: c.weekday, start: c.start, end: c.end }));
+
+function consultsDayHtml(date) {
+  const list = consultsOn(weekday(date), mineRows());
+  if (!list.length) return '';
+  return `<h3 class="section">консультации</h3><div class="consult-day">${list.map((c) => `<button class="consult-card glass press" type="button" data-consult="${esc(c.key)}">
+      <b>${esc(c.start)}–${esc(c.end)}</b><span>${esc(c.title)}</span>${consultState.weekly.has(c.key) ? `<i class="bell-on">${ICON.bell}</i>` : ''}
+    </button>`).join('')}</div>`;
+}
+
+function consultRowHtml(c) {
+  const w = consultState.weekly.get(c.key);
+  return `<div class="consult-row">
+    <div class="consult-info"><b>${esc(c.title)}</b><small>${esc(WEEKDAY_NAMES[c.weekday - 1])}, ${esc(c.start)}–${esc(c.end)}${c.shared ? '' : ' · только тебе'}</small>
+      ${w ? `<small class="on">напомню ${esc(weeklyText(c, w, w.time))}</small>` : ''}</div>
+    ${canWrite ? `<button class="hw-bell press${w ? ' on' : ''}" type="button" data-consult="${esc(c.key)}" aria-label="напоминание">${ICON.bell}</button>` : ''}
+    ${c.shared || !canWrite ? '' : `<button class="hw-del press" type="button" data-consult-del="${c.id}" aria-label="удалить">${ICON.trash}</button>`}
+  </div>`;
+}
+
+function openConsults() {
+  const mine = consultState.mine.map((c) => ({ ...c, key: `my:${c.id}`, shared: false }));
+  const root = openSheet(`<div class="sheet glass blur">
+    <div class="sheet-title">консультации</div>
+    <div class="remind-label">для всех</div>
+    <div class="consult-list">${SHARED_CONSULTS.map(consultRowHtml).join('')}</div>
+    <div class="remind-label">мои — видишь только ты</div>
+    <div class="consult-list">${mine.length ? mine.map(consultRowHtml).join('') : '<p class="muted">своих пока нет</p>'}</div>
+    ${canWrite ? '<button class="attach-btn press" type="button" data-consult-add>' + ICON.plus + '<span>добавить свою консультацию</span></button>'
+      : '<p class="muted">свои консультации и напоминания — в приложении, открытом из чата с ботом</p>'}
+    <div class="sheet-buttons"><button class="btn press" type="button" data-close>готово</button></div>
+  </div>`);
+  root.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-consult-add]')) return void openConsultForm();
+    const bell = e.target.closest('[data-consult]');
+    if (bell) return void openWeekly(bell.dataset.consult);
+    const del = e.target.closest('[data-consult-del]');
+    if (!del) return;
+    const ok = await new Promise((resolve) => {
+      if (tg?.showConfirm && inTelegram) tg.showConfirm('удалить консультацию?', resolve);
+      else resolve(window.confirm('удалить консультацию?'));
+    });
+    if (!ok) return;
+    try {
+      await callBot('deleteConsult', { id: Number(del.dataset.consultDel) });
+      consultState.mine = consultState.mine.filter((c) => c.id !== Number(del.dataset.consultDel));
+      consultState.weekly.delete(`my:${del.dataset.consultDel}`);
+      render();
+      openConsults();
+    } catch (err) {
+      notify(err?.message || 'не получилось удалить');
+    }
+  });
+}
+
+/** Своя консультация: название, день недели, начало и конец. */
+function openConsultForm() {
+  let wd = weekday(today()) > 6 ? 1 : weekday(today());
+  const root = openSheet(`<form class="sheet glass blur" autocomplete="off">
+    <div class="sheet-title">своя консультация — видишь только ты</div>
+    <input class="field" name="title" maxlength="80" placeholder="например: химия с Ивановой">
+    <div class="remind-label">день недели</div>
+    <div class="wd-chips">${DAY_SHORT.map((d, i) => `<button type="button" class="remind-time press${i + 1 === wd ? ' current' : ''}" data-wd="${i + 1}">${d.toLowerCase()}</button>`).join('')}</div>
+    <div class="remind-label">время</div>
+    <div class="remind-row"><input class="field" type="time" name="start" value="17:00"><input class="field" type="time" name="end" value="18:30"></div>
+    <div class="sheet-error" role="alert"></div>
+    <div class="sheet-buttons">
+      <button class="btn press" type="button" data-close>отмена</button>
+      <button class="btn primary press" type="submit">добавить</button>
+    </div>
+  </form>`);
+  const form = root.querySelector('form');
+  const error = root.querySelector('.sheet-error');
+  root.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-wd]');
+    if (!chip) return;
+    wd = Number(chip.dataset.wd);
+    root.querySelectorAll('[data-wd]').forEach((c) => c.classList.toggle('current', c === chip));
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const consult = { title: form.title.value.trim(), weekday: wd, start: form.start.value, end: form.end.value };
+    const problem = validateConsult(consult);
+    if (problem) return void (error.textContent = problem);
+    try {
+      const res = await callBot('addConsult', consult);
+      consultState.mine.push(res.consult);
+      render();
+      openConsults();
+    } catch (err) {
+      error.textContent = err?.message || 'не получилось добавить';
+    }
+  });
+  form.title.focus();
+}
+
+/** Напоминание о консультации каждую неделю: день недели и время, или «за час до начала». */
+function openWeekly(key) {
+  const c = [...SHARED_CONSULTS, ...consultState.mine.map((m) => ({ ...m, key: `my:${m.id}`, shared: false }))].find((x) => x.key === key);
+  if (!c) return;
+  const current = consultState.weekly.get(key);
+  let wd = current && current.time !== BEFORE_START ? current.weekday : c.weekday;
+  let time = current?.time ?? BEFORE_START;
+  const times = [[BEFORE_START, 'за час до начала'], ...WEEKLY_TIMES.map((t) => [t, REMIND_TIME_LABELS[t]])];
+  const root = openSheet(`<div class="sheet glass blur">
+    <div class="sheet-title">напоминать каждую неделю</div>
+    <div class="sheet-subject">${esc(c.title)}</div>
+    <div class="sheet-due">${esc(WEEKDAY_NAMES[c.weekday - 1])}, ${esc(c.start)}–${esc(c.end)} · бот напишет в личку</div>
+    <div class="remind-label">время</div>
+    <div class="remind-times">${times.map(([t, label]) => `<button type="button" class="remind-time press${t === time ? ' current' : ''}" data-time="${t}">${esc(label)}</button>`).join('')}</div>
+    <div class="weekly-day"${time === BEFORE_START ? ' hidden' : ''}>
+      <div class="remind-label">день недели</div>
+      <div class="wd-chips">${DAY_SHORT.map((d, i) => `<button type="button" class="remind-time press${i + 1 === wd ? ' current' : ''}" data-wd="${i + 1}">${d.toLowerCase()}</button>`).join('')}</div>
+    </div>
+    <div class="rpick-hint" data-hint></div>
+    <div class="sheet-error" role="alert"></div>
+    <button class="btn primary press" type="button" data-save>напоминать</button>
+    <div class="sheet-buttons">
+      ${current ? '<button class="btn press" type="button" data-off>выключить</button>' : ''}
+      <button class="btn press" type="button" data-close>отмена</button>
+    </div>
+  </div>`);
+  const hint = root.querySelector('[data-hint]');
+  const error = root.querySelector('.sheet-error');
+  const update = () => {
+    root.querySelector('.weekly-day').hidden = time === BEFORE_START;
+    const slot = weeklySlot(c, wd, time);
+    hint.textContent = slot ? `напомню ${time === BEFORE_START ? `${EVERY_WEEKDAY[slot.weekday - 1]} в ${fromMinutes(slot.minutes)}` : weeklyText(c, slot, time)}` : '';
+  };
+  update();
+  const save = async (t) => {
+    try {
+      const res = await callBot('setWeekly', { key, weekday: wd, time: t });
+      if (res.weekly) consultState.weekly.set(key, res.weekly);
+      else consultState.weekly.delete(key);
+      try { tg.HapticFeedback?.notificationOccurred('success'); } catch { /* старый клиент */ }
+      render();
+      openConsults();
+      if (res.weekly) notify(`напомню ${weeklyText(c, res.weekly, res.weekly.time)}`);
+    } catch (err) {
+      error.textContent = err?.message || 'не получилось';
+    }
+  };
+  root.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-time]');
+    const d = e.target.closest('[data-wd]');
+    if (t) {
+      time = t.dataset.time;
+      root.querySelectorAll('[data-time]').forEach((x) => x.classList.toggle('current', x === t));
+    } else if (d) {
+      wd = Number(d.dataset.wd);
+      root.querySelectorAll('[data-wd]').forEach((x) => x.classList.toggle('current', x === d));
+    } else if (e.target.closest('[data-off]')) {
+      return void save(null);
+    } else if (e.target.closest('[data-save]')) {
+      return void save(time);
+    } else {
+      return;
+    }
+    haptic();
+    update();
+  });
+}
+
 // --- Обои: у каждого свои ---
 // Выбор хранится у бота (getWallpaper / setWallpaper) — на всех устройствах одинаковый.
 // Своё фото: приложение уменьшает его и отправляет боту, а копию держит в localStorage,
@@ -976,9 +1165,10 @@ function go(date, view = state.view) {
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('.sheet-backdrop')) return;
-  const el = e.target.closest('[data-add], [data-del], [data-file], [data-remind], [data-date], [data-view], #prev-week, #next-week, #to-today, #class-btn, #wall-btn');
+  const el = e.target.closest('[data-add], [data-del], [data-file], [data-remind], [data-consult], [data-date], [data-view], #prev-week, #next-week, #to-today, #class-btn, #wall-btn, #consult-btn');
   if (!el) return;
-  if (el.dataset.remind) openReminder(Number(el.dataset.remind));
+  if (el.dataset.consult) openWeekly(el.dataset.consult);
+  else if (el.dataset.remind) openReminder(Number(el.dataset.remind));
   else if (el.dataset.file) openFile(Number(el.dataset.file));
   else if (el.dataset.add) openComposer({ kind: el.dataset.add, subject: el.dataset.subject, due: el.dataset.due });
   else if (el.dataset.del) deleteNote(Number(el.dataset.del));
@@ -989,6 +1179,7 @@ document.addEventListener('click', (e) => {
   else if (el.id === 'to-today') go(firstDay(), 'day');
   else if (el.id === 'class-btn') openClassPicker();
   else if (el.id === 'wall-btn') openWallPicker();
+  else if (el.id === 'consult-btn') openConsults();
 });
 
 document.addEventListener('keydown', (e) => {
@@ -1059,6 +1250,7 @@ document.title = 'расписание 10-х классов';
 
 applyScheme();
 loadWall();
+loadConsults();
 if (inTelegram) {
   tg.ready();
   tg.expand();

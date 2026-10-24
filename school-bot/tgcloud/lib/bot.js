@@ -22,6 +22,7 @@ import {
   REMIND_TIMES, canSee, cleanText, fileFromMessage, fileLabel, findSubject, groupOf, groupsOf, lessonOn, nextLessonDate, quickReminderAt,
   validateNote,
 } from './homework.js';
+import { WEEKDAY_NAMES, consultsOn } from './consults.js';
 
 export const NO_STORE = {
   range: async () => [],
@@ -44,13 +45,14 @@ export const BUTTONS = {
   bells: 'звонки',
   dz: 'задания',
   class: 'класс',
+  consult: 'консультации',
 };
 
 export const KEYBOARD = {
   keyboard: [
     [{ text: BUTTONS.today }, { text: BUTTONS.tomorrow }],
     [{ text: BUTTONS.week }, { text: BUTTONS.bells }],
-    [{ text: BUTTONS.dz }, { text: BUTTONS.class }],
+    [{ text: BUTTONS.dz }, { text: BUTTONS.consult }, { text: BUTTONS.class }],
   ],
   resize_keyboard: true,
   is_persistent: true,
@@ -65,6 +67,7 @@ export const COMMANDS = [
   { command: 'dz', description: 'домашние задания (или /dz мат: текст)' },
   { command: 'note', description: 'заметка к предмету: /note хим: текст' },
   { command: 'my', description: 'личное дз, видно только тебе: /my мат: текст' },
+  { command: 'consult', description: 'консультации (профмат 90+ и 80+, свои) и напоминания' },
   { command: 'class', description: 'выбрать класс и профиль' },
   { command: 'help', description: 'что умеет бот' },
 ];
@@ -97,6 +100,7 @@ const HELP_TEXT = [
   '/week — вся неделя',
   '/bells — звонки',
   '/dz — домашние задания и заметки класса',
+  '/consult — консультации: профмат «90+», «80+» и свои',
   '/class — сменить класс',
   '',
   'записать дз к ближайшему уроку: <code>/dz мат: №5–10</code>',
@@ -356,6 +360,7 @@ const ACTIONS = {
   help: async () => ({ text: HELP_TEXT, reply_markup: KEYBOARD }),
   class: async ({ cls }) => classPicker(cls),
   bells: async () => ({ text: formatBells() }),
+  consult: ({ now, store, message }) => consultList(message, now, store),
   today: ({ cls, now, store, message }) => dayView(cls, today(now), now, store, viewerOf(message.chat?.id)),
   tomorrow: ({ cls, now, store, message }) => dayView(cls, addDays(today(now), 1), now, store, viewerOf(message.chat?.id)),
   week: ({ cls, now, store, message }) => weekView(cls, schoolDay(today(now)), now, store, viewerOf(message.chat?.id)),
@@ -436,6 +441,43 @@ function whenText(at) {
   const local = new Date((at + UTC_OFFSET_HOURS * 3600) * 1000);
   const day = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
   return `${ddmm(day)} в ${hhmm(local.getUTCHours() * 60 + local.getUTCMinutes())}`;
+}
+
+// --- Консультации ---
+// Общие (профмат «90+», «80+») — у всех, свои — только у того, кто добавил (store.myConsults(userId)).
+// Добавлять свои и включать напоминания — в приложении.
+
+const WEEKDAY_ACC = ['в понедельник', 'во вторник', 'в среду', 'в четверг', 'в пятницу', 'в субботу', 'в воскресенье'];
+
+function consultLine(c) {
+  return `<b>${escapeHtml(c.start)}–${escapeHtml(c.end)}</b> ${escapeHtml(c.title)}${c.shared ? '' : ' <i>— только тебе</i>'}`;
+}
+
+/** /consult: консультации по дням недели и кнопка «открыть» (там — свои и напоминания). */
+async function consultList(message, nowMs, store) {
+  const viewer = viewerOf(message.chat?.id);
+  const mine = viewer && store.myConsults ? await store.myConsults(viewer) : [];
+  const lines = ['<b>консультации</b>'];
+  for (let wd = 1; wd <= 7; wd++) {
+    const list = consultsOn(wd, mine);
+    if (list.length) lines.push('', `<b>${WEEKDAY_NAMES[wd - 1]}</b>`, ...list.map(consultLine));
+  }
+  lines.push('', 'добавить свою консультацию и включить напоминание каждую неделю — в приложении:');
+  return {
+    text: lines.join('\n'),
+    ...(viewer && { reply_markup: { inline_keyboard: [[{ text: 'открыть консультации', web_app: { url: `${MINI_APP_URL}?consult=1` } }]] } }),
+  };
+}
+
+/** Еженедельное напоминание о консультации. */
+export function consultReminderMessage(consult, nowMs = Date.now()) {
+  const todayWd = weekday(today(nowMs));
+  const diff = (consult.weekday - todayWd + 7) % 7;
+  const when = { 0: 'сегодня', 1: 'завтра' }[diff] ?? WEEKDAY_ACC[consult.weekday - 1];
+  return {
+    text: [`<b>напоминание о консультации</b> — ${when}`, '', consultLine(consult)].join('\n'),
+    reply_markup: { inline_keyboard: [[{ text: 'открыть расписание', web_app: { url: MINI_APP_URL } }]] },
+  };
 }
 
 /** Текст напоминания: что задано, к какому уроку, во сколько и где. */

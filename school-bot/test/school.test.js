@@ -349,3 +349,52 @@ test('напоминания: любой день, время 9/15/18/0, кно�
   assert.match(reminderMessage('a-gum', note, at('2026-10-17', 9)).text, /— чт, 22 октября/);
   assert.match(reminderMessage('a-gum', note, at('2026-10-25', 9)).text, /— урок был чт, 22 октября/);
 });
+
+test('консультации: общие 90+/80+, свои, еженедельные напоминания', async () => {
+  const { SHARED_CONSULTS, BEFORE_START, consultsOn, nextWeekly, validateConsult, weeklySlot, consultByKey, myConsult } = await import('../tgcloud/lib/consults.js');
+  const { consultReminderMessage } = await import('../tgcloud/lib/bot.js');
+  assert.deepEqual(SHARED_CONSULTS.map((c) => [c.title, c.weekday, c.start, c.end]), [
+    ['подготовка профмат «90+»', 1, '17:00', '18:30'],
+    ['профмат «80+»', 2, '17:00', '18:30'],
+  ]);
+  const mine = [{ id: 3, title: 'химия', weekday: 1, start: '15:00', end: '16:00' }];
+  assert.deepEqual(consultsOn(1, mine).map((c) => c.key), ['my:3', 'prof90']); // по времени
+  assert.deepEqual(consultsOn(1).map((c) => c.key), ['prof90']); // чужие свои не видны
+  assert.equal(consultByKey('my:3', mine).title, 'химия');
+  assert.equal(consultByKey('my:4', mine), null);
+
+  assert.equal(validateConsult({ title: 'химия', weekday: 3, start: '15:00', end: '16:00' }), null);
+  assert.equal(validateConsult({ title: ' ', weekday: 3, start: '15:00', end: '16:00' }), 'напиши, что за консультация');
+  assert.equal(validateConsult({ title: 'x', weekday: 8, start: '15:00', end: '16:00' }), 'выбери день недели');
+  assert.equal(validateConsult({ title: 'x', weekday: 3, start: '16:00', end: '15:00' }), 'конец должен быть позже начала');
+  assert.equal(validateConsult({ title: 'x', weekday: 3, start: '25:00', end: '26:00' }), 'время — в виде 17:00');
+
+  const prof90 = SHARED_CONSULTS[0];
+  // за час до начала — по понедельникам в 16:00
+  assert.deepEqual(weeklySlot(prof90, 5, BEFORE_START), { weekday: 1, minutes: 16 * 60 });
+  // в любой день недели в 18:00 — воскресенье накануне
+  assert.deepEqual(weeklySlot(prof90, 7, '18:00'), { weekday: 7, minutes: 18 * 60 });
+  assert.equal(weeklySlot(prof90, 7, '18:30'), null);
+  // ближайшее — сб 24.10 10:00 → пн 26.10 16:00; если уже пн 16:30 → следующий пн
+  const local = (sec) => new Date((sec + 9 * 3600) * 1000).toISOString().slice(0, 16);
+  assert.equal(local(nextWeekly({ weekday: 1, minutes: 960 }, at('2026-10-24', 10))), '2026-10-26T16:00');
+  assert.equal(local(nextWeekly({ weekday: 1, minutes: 960 }, at('2026-10-26', 16, 30))), '2026-11-02T16:00');
+  assert.equal(local(nextWeekly({ weekday: 6, minutes: 600 }, at('2026-10-24', 9))), '2026-10-24T10:00');
+
+  assert.match(consultReminderMessage(prof90, at('2026-10-26', 16)).text, /— сегодня\n\n<b>17:00–18:30<\/b> подготовка профмат «90\+»/);
+  assert.match(consultReminderMessage(prof90, at('2026-10-25', 18)).text, /— завтра/);
+  assert.match(consultReminderMessage(myConsult(mine[0]), at('2026-10-23', 18)).text, /— в понедельник.*только тебе/s);
+});
+
+test('бот: /consult — общие и свои, свои только в личке', async () => {
+  const store = { range: async () => [], upcoming: async () => [], myConsults: async (id) => (id === 7 ? [{ id: 3, title: 'химия', weekday: 3, start: '15:00', end: '16:00' }] : []) };
+  const prefs = memoryPrefs();
+  const r = await replyTo({ text: 'консультации', chat: { id: 7, type: 'private' } }, at('2026-10-24', 10), store, prefs);
+  assert.match(r.text, /<b>понедельник<\/b>\n<b>17:00–18:30<\/b> подготовка профмат «90\+»/);
+  assert.match(r.text, /<b>вторник<\/b>\n<b>17:00–18:30<\/b> профмат «80\+»/);
+  assert.match(r.text, /<b>среда<\/b>\n<b>15:00–16:00<\/b> химия <i>— только тебе<\/i>/);
+  assert.equal(r.reply_markup.inline_keyboard[0][0].web_app.url, 'https://app8734400455.tgcloud.ai/?consult=1');
+  const g = await replyTo({ text: '/consult', chat: { id: -5, type: 'supergroup' } }, at('2026-10-24', 10), store, prefs);
+  assert.ok(!g.text.includes('химия'));
+  assert.equal(g.reply_markup, undefined);
+});

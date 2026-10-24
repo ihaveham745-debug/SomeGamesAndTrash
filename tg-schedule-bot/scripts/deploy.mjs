@@ -78,5 +78,17 @@ function run(cmd, args) {
 console.log(`Деплой ${GROUP} → ${APP_ID} (ключ: ${source})`);
 if (!existsSync(join(dir, '.tgcloud', 'state.json'))) run('npx', ['tgcloud', 'fetch']);
 run('node', ['scripts/build.mjs', dir]);
-run('npx', ['tgcloud', 'push']);
+// tgcloud иногда падает уже после загрузки (пишет в свой снимок false вместо текста модуля).
+// Тогда сверяемся с сервером: если загружать больше нечего — всё выложилось, идём дальше.
+const push = spawnSync('npx', ['tgcloud', 'push'], { cwd: dir, stdio: 'inherit', env: { ...process.env, TGCLOUD_TOKEN: token, TGCLOUD_NO_PAGER: '1' } });
+if (push.status !== 0) {
+  console.warn('\npush упал — сверяю с сервером…');
+  run('npx', ['tgcloud', 'fetch']);
+  const status = spawnSync('npx', ['tgcloud', 'status'], { cwd: dir, encoding: 'utf8', env: { ...process.env, TGCLOUD_TOKEN: token, TGCLOUD_NO_PAGER: '1' } });
+  if (!/Working directory clean/.test(status.stdout ?? '')) {
+    console.error(status.stdout, status.stderr);
+    process.exit(1);
+  }
+  console.warn('на сервере всё новое — продолжаю');
+}
 run('npx', ['tgcloud', 'migrate', '--safe']);

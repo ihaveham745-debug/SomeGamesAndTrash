@@ -5,6 +5,7 @@ import {
   COMMANDS, DESCRIPTION, MENU_BUTTON, SHORT_DESCRIPTION, actionFor, commandMention, replyTo,
 } from '../lib/bot.js';
 import { store } from '../lib/notes.js';
+import { myConsults } from '../lib/consultStore.js';
 import { prefs } from '../lib/prefs.js';
 import { tickReminders } from '../lib/reminders.js';
 
@@ -13,7 +14,7 @@ export default async function (message, ctx) {
   const mention = commandMention(message.text);
   if (mention && mention !== (await api.getMe()).username.toLowerCase()) return;
 
-  const reply = await replyTo(message, Date.now(), store, prefs);
+  const reply = await replyTo(message, Date.now(), { ...store, myConsults }, prefs);
   await tickReminders(); // заодно разослать напоминания, чьё время пришло
   if (!reply) return;
 
