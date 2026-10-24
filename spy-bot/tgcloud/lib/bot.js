@@ -9,7 +9,7 @@
 
 import {
   MIN_PLAYERS, allVoted, cycleCategory, cycleSpies, finishVote, guess, isPlayer, isSpy, maxSpies, newLobby,
-  openGuess, playerName, rematch, roleText, startGame, stopGame, tally, toggleHint, toggleJoin, vote,
+  openGuess, playerName, rematch, roleText, startGame, stopGame, tally, toggleHint, toggleJoin, toggleMode, vote,
 } from './game.js';
 import { CATEGORIES, categoryName } from './words.js';
 
@@ -24,23 +24,24 @@ export const COMMANDS = [
 export const DESCRIPTION = [
   '🕵️ Игра «Шпион»',
   '',
-  'У всех игроков одно общее слово — кроме шпиона. Он слова не знает и должен не выдать себя,',
-  'а остальные — вычислить его по вопросам.',
+  'У всех игроков одно общее слово — кроме шпиона: у него другое слово той же темы.',
+  'Вычислите его по вопросам!',
   '',
   'Добавь бота в группу и напиши /spy — или играй с одного телефона в приложении.',
 ].join('\n');
 
-export const SHORT_DESCRIPTION = '🕵️ Шпион: у всех одно слово, кроме шпиона. Играй в группе или с одного телефона';
+export const SHORT_DESCRIPTION = '🕵️ Шпион: у всех одно слово, у шпиона — другое той же темы. Играй в группе или с одного телефона';
 
 export const RULES = [
   '📖 <b>Правила «Шпиона»</b>',
   '',
-  '1. Все, кроме шпиона, получают одно и то же слово (место, еду, животное…). Шпион слова не знает.',
+  '1. Все, кроме шпиона, получают одно и то же слово (место, еду, животное…). У шпиона — другое слово той же темы,',
+  '   и он сам не знает, что он шпион. (В режиме «без слова» шпион знает, кто он, но слова не знает.)',
   '2. Каждый смотрит свою роль кнопкой «🎭 моя роль» — её видит только он.',
   '3. По очереди задавайте друг другу вопросы про слово, не называя его: «ты бы там был зимой?», «это дорого?».',
   '4. Шпион слушает и притворяется, что знает слово.',
   '5. Когда готовы — голосуйте кнопками, кто шпион. Набрал больше всех голосов шпион — победили мирные, нет — шпион.',
-  '6. Шпион может в любой момент раскрыться и угадать слово из 8 вариантов: угадал — победа шпиона.',
+  '6. В режиме «без слова» шпион может раскрыться и угадать слово из 8 вариантов: угадал — победа шпиона.',
   '',
   'Играть: добавь бота в группу и напиши /spy. С одного телефона — в приложении.',
 ].join('\n');
@@ -73,7 +74,10 @@ export function render(state) {
         '',
         list,
         '',
-        `категория: <b>${esc(categoryName(state.category))}</b> · шпионов: <b>${state.spyCount}</b> · подсказка шпиону: <b>${state.hint ? 'да' : 'нет'}</b>`,
+        `тема: <b>${esc(categoryName(state.category))}</b> · шпионов: <b>${state.spyCount}</b>`,
+        state.mode === 'classic'
+          ? `режим: <b>шпион без слова</b> — знает, что он шпион${state.hint ? ', и знает тему' : ''}`
+          : 'режим: <b>другое слово</b> — у шпиона другое слово той же темы, и он не знает, что он шпион',
         '',
         n < MIN_PLAYERS
           ? `жми «✋ играю» — нужно ещё ${MIN_PLAYERS - n} ${plural(MIN_PLAYERS - n, 'игрок', 'игрока', 'игроков')}`
@@ -82,7 +86,9 @@ export function render(state) {
       reply_markup: {
         inline_keyboard: [
           [btn('✋ играю / выйти', 'j'), btn('▶️ начать', 's')],
-          [btn(`🗂 ${categoryName(state.category)}`, 'c'), btn(`🕵️ ×${state.spyCount}`, 'n'), btn(`💡 ${state.hint ? 'подсказка' : 'без подсказки'}`, 'h')],
+          [btn(`🗂 ${categoryName(state.category)}`, 'c'), btn(`🕵️ ×${state.spyCount}`, 'n')],
+          [btn(state.mode === 'classic' ? '🎭 режим: без слова' : '🎭 режим: другое слово', 'm'),
+            ...(state.mode === 'classic' ? [btn(`💡 ${state.hint ? 'подсказка' : 'без подсказки'}`, 'h')] : [])],
           [btn('✖ отменить', 'x')],
         ],
       },
@@ -101,7 +107,8 @@ export function render(state) {
       text: [
         '🕵️ <b>Игра началась!</b>',
         '',
-        `игроков: ${state.players.length}, шпионов: ${state.spyIds.length}${state.hint ? ` · категория: <b>${esc(CATEGORIES[state.wordCategory].name)}</b>` : ''}`,
+        `игроков: ${state.players.length}, шпионов: ${state.spyIds.length}${state.spyWord || state.hint ? ` · тема: <b>${esc(CATEGORIES[state.wordCategory].name)}</b>` : ''}`,
+        ...(state.spyWord ? ['<i>у шпиона другое слово той же темы — и он сам не знает, что он шпион</i>'] : []),
         '',
         '1. жми «🎭 моя роль» — увидишь только ты',
         `2. по очереди задавайте вопросы, первым спрашивает <b>${esc(playerName(state, state.firstId))}</b>`,
@@ -113,7 +120,7 @@ export function render(state) {
         inline_keyboard: [
           [btn('🎭 моя роль', 'r')],
           ...rows,
-          [btn('🕵️ я шпион — угадать слово', 'g')],
+          ...(state.spyWord ? [] : [[btn('🕵️ я шпион — угадать слово', 'g')]]),
           [btn('📊 итоги', 'e'), btn('✖ закончить', 'x')],
         ],
       },
@@ -138,7 +145,7 @@ export function render(state) {
     '🏁 <b>Игра окончена</b>',
     '',
     `слово: <b>${esc(state.word)}</b> (${esc(CATEGORIES[state.wordCategory].name)})`,
-    `${state.spyIds.length > 1 ? 'шпионы' : 'шпион'}: ${names(state, state.spyIds)}`,
+    `${state.spyIds.length > 1 ? 'шпионы' : 'шпион'}: ${names(state, state.spyIds)}${state.spyWord ? ` — у него было слово <b>${esc(state.spyWord)}</b>` : ''}`,
     '',
   ];
   if (state.reason === 'caught' || state.reason === 'wrong') {
@@ -159,7 +166,7 @@ export function render(state) {
   return { text: lines.join('\n'), reply_markup: { inline_keyboard: [[btn('🔁 ещё раз', 'a')]] } };
 }
 
-const HOST_ONLY = new Set(['s', 'c', 'n', 'h', 'x', 'a']);
+const HOST_ONLY = new Set(['s', 'c', 'n', 'h', 'm', 'x', 'a']);
 
 /**
  * Нажатие кнопки игры: → { state, alert?, toast? }. state — новое состояние (то же, если ничего не поменялось),
@@ -184,6 +191,7 @@ export function press(state, data, user, rnd = Math.random) {
     return { state: next, toast: next.spyCount === state.spyCount ? `при ${state.players.length} игроках — ${maxSpies(state.players.length)} шпион(а)` : undefined };
   }
   if (data === 'h') return state.status === 'lobby' ? { state: toggleHint(state) } : { state };
+  if (data === 'm') return state.status === 'lobby' ? { state: toggleMode(state) } : { state };
   if (data === 'r') return { state, alert: roleText(state, me.id) };
   if (data.startsWith('v:')) {
     const res = vote(state, me.id, Number(data.slice(2)));

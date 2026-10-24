@@ -20,7 +20,7 @@ const vik = U(3, 'Вика');
 const gena = U(4, 'Гена');
 
 function lobbyWith(...users) {
-  let state = newLobby({ id: users[0].id, name: users[0].first_name });
+  let state = { ...newLobby({ id: users[0].id, name: users[0].first_name }), mode: 'classic' };
   for (const u of users.slice(1)) state = press(state, 'j', u).state;
   return state;
 }
@@ -48,7 +48,7 @@ test('лобби: вход и выход, ведущий не выходит, с
   assert.equal(press(s, 'c', bob).state, s);
 });
 
-test('игра: у всех одно слово, у шпиона — нет; роль видит только нажавший', () => {
+test('режим «без слова»: у всех одно слово, у шпиона — нет; роль видит только нажавший', () => {
   const s0 = lobbyWith(ann, bob, vik, gena);
   const { state } = startGame(s0, seq(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7));
   assert.equal(state.status, 'play');
@@ -64,6 +64,7 @@ test('игра: у всех одно слово, у шпиона — нет; р�
       assert.match(text, /категория:/); // подсказка включена по умолчанию
     } else {
       assert.match(text, new RegExp(`слово: ${word.toUpperCase()}`));
+      assert.match(text, /тема:/);
     }
   }
   assert.match(roleText(state, 99), /не в этой игре/);
@@ -104,7 +105,7 @@ test('голосование: поймали шпиона — мирные, не
   assert.match(render(tie).text, /голоса разделились[\s\S]*победа шпиона/);
 });
 
-test('шпион угадывает слово: только он, 8 вариантов, среди них верный', () => {
+test('режим «без слова»: шпион угадывает слово — только он, 8 вариантов, среди них верный', () => {
   const base = startGame(lobbyWith(ann, bob, vik), seq(0.3, 0.6, 0.9)).state;
   const spy = base.spyIds[0];
   const notSpy = base.players.find((p) => p.id !== spy).id;
@@ -131,4 +132,36 @@ test('ещё раз и отмена', () => {
   assert.equal(again.players.length, 3);
   assert.equal(press(lobbyWith(ann, bob), 'x', ann).state.status, 'cancelled');
   assert.match(render({ status: 'cancelled' }).text, /отменили/);
+});
+
+test('режим «другое слово» (по умолчанию): у шпиона другое слово той же темы, и он не знает, что он шпион', () => {
+  let s = newLobby({ id: 1, name: 'Аня' });
+  assert.equal(s.mode, 'word');
+  for (const u of [bob, vik, gena]) s = press(s, 'j', u).state;
+  assert.match(render(s).text, /режим: <b>другое слово<\/b>/);
+  assert.equal(press(s, 'm', ann).state.mode, 'classic');
+  assert.equal(press(s, 'm', bob).state, s); // режим — только ведущий
+
+  const game = startGame(s, seq(0.15, 0.35, 0.55, 0.75, 0.95)).state;
+  const spy = game.spyIds[0];
+  const words = CATEGORIES[game.wordCategory].words;
+  assert.ok(words.includes(game.spyWord), 'слово шпиона — из той же темы');
+  assert.notEqual(game.spyWord, game.word);
+  const spyText = roleText(game, spy);
+  assert.match(spyText, new RegExp(`слово: ${game.spyWord.toUpperCase()}`));
+  assert.ok(!/шпион!|ШПИОН/.test(spyText), 'шпион не знает, что он шпион');
+  for (const p of game.players.filter((x) => x.id !== spy)) {
+    assert.match(roleText(game, p.id), new RegExp(`слово: ${game.word.toUpperCase()}`));
+  }
+  // карточки шпиона и мирного выглядят одинаково — отличается только слово
+  const civ = game.players.find((p) => p.id !== spy).id;
+  assert.equal(spyText.replace(game.spyWord.toUpperCase(), 'X'), roleText(game, civ).replace(game.word.toUpperCase(), 'X'));
+  // угадывать нечего, кнопки нет
+  assert.match(press(game, 'g', U(spy, 'x')).toast, /не знает, что он шпион/);
+  assert.ok(!JSON.stringify(render(game).reply_markup).includes('угадать'));
+  // итоги называют оба слова
+  const over = finishVote(vote(game, civ, spy).state).state;
+  assert.match(render(over).text, new RegExp(`у него было слово <b>${game.spyWord}</b>`));
+  assert.match(render(over).text, new RegExp(`слово: <b>${game.word}</b>`));
+  assert.equal(press(over, 'a', ann).state.mode, 'word');
 });

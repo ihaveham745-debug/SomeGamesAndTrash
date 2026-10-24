@@ -11,9 +11,9 @@ const SETTINGS_KEY = 'spy.settings';
 
 function load() {
   try {
-    return { players: 5, spies: 1, category: ANY, hint: true, minutes: 8, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') };
+    return { players: 5, spies: 1, category: ANY, hint: true, mode: 'word', minutes: 8, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') };
   } catch {
-    return { players: 5, spies: 1, category: ANY, hint: true, minutes: 8 };
+    return { players: 5, spies: 1, category: ANY, hint: true, mode: 'word', minutes: 8 };
   }
 }
 
@@ -43,7 +43,7 @@ function setupScreen() {
   const chips = [ANY, ...CATEGORY_KEYS].map((k) => `<button class="chip${settings.category === k ? ' on' : ''}" data-cat="${k}">${esc(categoryName(k))}</button>`).join('');
   app.innerHTML = `
     <h1>🕵️ Шпион</h1>
-    <p class="muted">у всех одно общее слово — кроме шпиона. телефон передаёте по кругу, каждый смотрит свою роль.</p>
+    <p class="muted">у всех одно общее слово, у шпиона — другое той же темы. телефон передаёте по кругу, каждый смотрит свою роль.</p>
     <section class="card">
       <div class="label">игроков</div>
       <div class="stepper"><button data-step="players:-1" ${settings.players <= MIN_PLAYERS ? 'disabled' : ''}>−</button>
@@ -61,8 +61,16 @@ function setupScreen() {
       <div class="chips">${chips}</div>
     </section>
     <section class="card">
-      <label class="switch"><span><b>подсказка шпиону</b><br><span class="muted">шпион узнает категорию слова</span></span>
-        <input type="checkbox" data-hint ${settings.hint ? 'checked' : ''}></label>
+      <div class="label">режим</div>
+      <div class="chips">
+        <button class="chip${settings.mode !== 'classic' ? ' on' : ''}" data-mode="word">другое слово</button>
+        <button class="chip${settings.mode === 'classic' ? ' on' : ''}" data-mode="classic">шпион без слова</button>
+      </div>
+      <p class="muted">${settings.mode === 'classic'
+        ? 'шпион знает, что он шпион, но слова не знает'
+        : 'у шпиона другое слово той же темы — и он сам не знает, что он шпион'}</p>
+      ${settings.mode === 'classic' ? `<label class="switch"><span><b>подсказка шпиону</b><br><span class="muted">шпион узнает тему слова</span></span>
+        <input type="checkbox" data-hint ${settings.hint ? 'checked' : ''}></label>` : ''}
     </section>
     <section class="card">
       <div class="label">таймер обсуждения, минут</div>
@@ -78,7 +86,7 @@ function setupScreen() {
 
 function deal() {
   let state = newLobby({ id: 0, name: nameOf(0) });
-  state = { ...state, players: Array.from({ length: settings.players }, (_, i) => ({ id: i, name: nameOf(i) })), category: settings.category, spyCount: settings.spies, hint: settings.hint };
+  state = { ...state, players: Array.from({ length: settings.players }, (_, i) => ({ id: i, name: nameOf(i) })), category: settings.category, spyCount: settings.spies, hint: settings.hint, mode: settings.mode === 'classic' ? 'classic' : 'word' };
   game = startGame(state).state;
   turn = 0;
   shown = false;
@@ -96,7 +104,9 @@ function roleScreen() {
       <p class="muted">${turn + 1} из ${game.players.length}</p>`;
     return;
   }
-  const spy = game.spyIds.includes(turn);
+  // в режиме «другое слово» шпион видит обычную карточку со своим словом — и не знает, что он шпион
+  const spy = game.spyIds.includes(turn) && !game.spyWord;
+  const word = game.spyIds.includes(turn) && game.spyWord ? game.spyWord : game.word;
   const cat = CATEGORIES[game.wordCategory].name;
   const others = game.spyIds.filter((s) => s !== turn).map(nameOf);
   app.innerHTML = `
@@ -105,7 +115,7 @@ function roleScreen() {
       ${spy
         ? `<div class="emoji">🕵️</div><div class="word">ты шпион!</div>
            <p>${game.hint ? `категория: <b>${esc(cat)}</b><br>` : ''}слова ты не знаешь — притворяйся${others.length ? `<br>ещё шпион: ${esc(others.join(', '))}` : ''}</p>`
-        : `<div class="emoji">🗝️</div><p class="muted">слово</p><div class="word">${esc(game.word)}</div><p class="muted">категория: ${esc(cat)}</p>`}
+        : `<div class="emoji">🗝️</div><p class="muted">слово</p><div class="word">${esc(word)}</div><p class="muted">тема: ${esc(cat)}</p>`}
     </div></div>
     <div class="spacer"></div>
     <button class="big" data-next>${last ? 'скрыть — все посмотрели' : `скрыть — дальше ${esc(nameOf(turn + 1))}`}</button>`;
@@ -160,7 +170,8 @@ function revealScreen() {
     <div class="role spy"><div>
       <div class="emoji">🕵️</div>
       <p class="muted">${game.spyIds.length > 1 ? 'шпионы' : 'шпион'}</p><div class="word">${esc(spies)}</div>
-      <p class="muted">слово было</p><div class="word">${esc(game.word)}</div>
+      ${game.spyWord ? `<p class="muted">у шпиона было слово</p><div class="word">${esc(game.spyWord)}</div>` : ''}
+      <p class="muted">${game.spyWord ? 'у всех остальных' : 'слово было'}</p><div class="word">${esc(game.word)}</div>
     </div></div>
     <div class="spacer"></div>
     <div class="row"><button class="big ghost" data-setup>настройки</button><button class="big" data-go>ещё раз</button></div>`;
@@ -175,6 +186,11 @@ app.addEventListener('click', async (e) => {
   if (el.dataset.step) {
     const [key, d] = el.dataset.step.split(':');
     settings[key] += Number(d);
+    save();
+    return setupScreen();
+  }
+  if (el.dataset.mode) {
+    settings.mode = el.dataset.mode;
     save();
     return setupScreen();
   }

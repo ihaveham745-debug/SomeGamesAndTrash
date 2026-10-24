@@ -1,11 +1,13 @@
 // lib/game — правила «Шпиона» без Telegram и базы: чистые функции над состоянием игры.
 // Работает и в боте (игра в группе), и в Mini App (один телефон по кругу), и в тестах.
 //
-// У всех, кроме шпиона, одно общее слово. Шпион слова не знает (с подсказкой — знает категорию).
-// Игроки задают друг другу вопросы, потом голосуют, кто шпион. Шпион может раскрыться и угадать слово.
+// У всех, кроме шпиона, одно общее слово. Два режима (mode):
+//   'word'    — у шпиона ДРУГОЕ слово той же темы, и он сам не знает, что он шпион (по умолчанию);
+//   'classic' — шпион знает, что он шпион, слова не знает (с подсказкой — знает тему) и может угадать слово.
+// Игроки задают друг другу вопросы, потом голосуют, кто шпион.
 //
-// Состояние: { status, hostId, players: [{ id, name }], category, spyCount, hint,
-//              word, wordCategory, spyIds, firstId, votes: { voterId: targetId }, options, winner, reason }
+// Состояние: { status, hostId, players: [{ id, name }], category, spyCount, hint, mode,
+//              word, spyWord, wordCategory, spyIds, firstId, votes: { voterId: targetId }, options, winner, reason }
 // status: 'lobby' → 'play' → 'guess' (шпион угадывает) → 'over'.
 
 import { ANY, CATEGORIES, CATEGORY_KEYS } from './words.js';
@@ -31,7 +33,7 @@ function shuffle(list, rnd) {
 export function newLobby(host) {
   return {
     status: 'lobby', hostId: host.id, players: [{ id: host.id, name: host.name }],
-    category: ANY, spyCount: 1, hint: true, votes: {},
+    category: ANY, spyCount: 1, hint: true, mode: 'word', votes: {},
   };
 }
 
@@ -60,6 +62,7 @@ export function cycleSpies(state) {
 }
 
 export const toggleHint = (state) => ({ ...state, hint: !state.hint });
+export const toggleMode = (state) => ({ ...state, mode: state.mode === 'classic' ? 'word' : 'classic' });
 
 /** Раздать роли. → { state } или { error }. */
 export function startGame(state, rnd = Math.random) {
@@ -67,10 +70,12 @@ export function startGame(state, rnd = Math.random) {
   if (state.players.length < MIN_PLAYERS) return { error: `нужно хотя бы ${MIN_PLAYERS} игрока` };
   const wordCategory = state.category === ANY ? pick(CATEGORY_KEYS, rnd) : state.category;
   const word = pick(CATEGORIES[wordCategory].words, rnd);
+  // режим «другое слово»: шпиону — другое слово той же темы
+  const spyWord = state.mode === 'classic' ? null : pick(CATEGORIES[wordCategory].words.filter((w) => w !== word), rnd);
   const spyCount = Math.min(state.spyCount, maxSpies(state.players.length));
   const spyIds = shuffle(state.players.map((p) => p.id), rnd).slice(0, spyCount);
   const firstId = pick(state.players, rnd).id;
-  return { state: { ...state, status: 'play', spyCount, word, wordCategory, spyIds, firstId, votes: {}, options: [] } };
+  return { state: { ...state, status: 'play', spyCount, word, spyWord, wordCategory, spyIds, firstId, votes: {}, options: [] } };
 }
 
 export const isPlayer = (state, id) => state.players.some((p) => p.id === id);
@@ -82,12 +87,16 @@ export function roleText(state, id) {
   if (!isPlayer(state, id)) return 'ты не в этой игре — дождись следующей';
   if (state.status === 'lobby') return 'игра ещё не началась';
   const cat = CATEGORIES[state.wordCategory].name;
+  // в режиме «другое слово» шпион видит то же, что все, только со своим словом — и не знает, что он шпион
+  if (isSpy(state, id) && state.spyWord) return civilianText(state.spyWord, cat);
   if (isSpy(state, id)) {
     const others = state.spyIds.length > 1 ? `\nещё шпион: ${state.spyIds.filter((s) => s !== id).map((s) => playerName(state, s)).join(', ')}` : '';
     return `🕵️ ты ШПИОН!\n${state.hint ? `категория: ${cat}\n` : ''}слова ты не знаешь — притворяйся и вычисли его по вопросам${others}`;
   }
-  return `слово: ${state.word.toUpperCase()}\nкатегория: ${cat}\n\nне называй слово прямо — ищи шпиона`;
+  return civilianText(state.word, cat);
 }
+
+const civilianText = (word, cat) => `слово: ${word.toUpperCase()}\nтема: ${cat}\n\nне называй слово прямо — ищи шпиона: у него слово другое`;
 
 /** Голос: voterId считает шпионом targetId (можно передумать; за себя нельзя). → { state } или { error }. */
 export function vote(state, voterId, targetId) {
@@ -126,6 +135,7 @@ export function finishVote(state) {
 /** Шпион раскрывается и угадывает слово: варианты — слово и ещё 7 из той же категории. */
 export function openGuess(state, id, rnd = Math.random) {
   if (state.status !== 'play') return { error: 'сейчас нельзя' };
+  if (state.spyWord) return { error: 'в этом режиме шпион не знает, что он шпион — угадывать нечего' };
   if (!isSpy(state, id)) return { error: 'угадывать слово может только шпион 🤫' };
   const rest = shuffle(CATEGORIES[state.wordCategory].words.filter((w) => w !== state.word), rnd).slice(0, GUESS_OPTIONS - 1);
   return { state: { ...state, status: 'guess', guesserId: id, options: shuffle([state.word, ...rest], rnd) } };
@@ -150,6 +160,6 @@ export function stopGame(state) {
 export function rematch(state) {
   return {
     status: 'lobby', hostId: state.hostId, players: state.players,
-    category: state.category, spyCount: state.spyCount, hint: state.hint, votes: {},
+    category: state.category, spyCount: state.spyCount, hint: state.hint, mode: state.mode ?? 'word', votes: {},
   };
 }
