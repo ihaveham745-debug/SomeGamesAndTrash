@@ -5,7 +5,7 @@ import {
   finishVote, guess, maxSpies, newLobby, openGuess, roleText, startGame, tally, toggleJoin, vote,
 } from '../tgcloud/lib/game.js';
 import { press, render } from '../tgcloud/lib/bot.js';
-import { CATEGORIES } from '../tgcloud/lib/words.js';
+import { CATEGORIES, similarWords } from '../tgcloud/lib/words.js';
 
 // предсказуемый «рандом»
 function seq(...values) {
@@ -25,11 +25,13 @@ function lobbyWith(...users) {
   return state;
 }
 
-test('слова: в каждой категории хватает слов на угадывание, без повторов', () => {
+test('слова: группы похожих по 2+ слова, без повторов, на угадывание хватает', () => {
   for (const [key, c] of Object.entries(CATEGORIES)) {
     assert.ok(c.words.length >= 20, key);
     assert.equal(new Set(c.words).size, c.words.length, `${key}: повтор`);
+    for (const g of c.groups) assert.ok(g.length >= 2, `${key}: группа из одного слова ${g}`);
   }
+  assert.deepEqual(similarWords('food', 'торт'), ['пирожное', 'кекс', 'чизкейк']);
   assert.deepEqual([3, 4, 5, 6, 7, 9].map(maxSpies), [1, 1, 2, 2, 3, 3]);
 });
 
@@ -146,6 +148,7 @@ test('режим «другое слово» (по умолчанию): у шп�
   const spy = game.spyIds[0];
   const words = CATEGORIES[game.wordCategory].words;
   assert.ok(words.includes(game.spyWord), 'слово шпиона — из той же темы');
+  assert.ok(similarWords(game.wordCategory, game.word).includes(game.spyWord), 'и похоже на общее');
   assert.notEqual(game.spyWord, game.word);
   const spyText = roleText(game, spy);
   assert.match(spyText, new RegExp(`слово: ${game.spyWord.toUpperCase()}`));

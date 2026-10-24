@@ -2,7 +2,7 @@
 // Работает и в боте (игра в группе), и в Mini App (один телефон по кругу), и в тестах.
 //
 // У всех, кроме шпиона, одно общее слово. Два режима (mode):
-//   'word'    — у шпиона ДРУГОЕ слово той же темы, и он сам не знает, что он шпион (по умолчанию);
+//   'word'    — у шпиона ДРУГОЕ, но похожее слово (торт ↔ пирожное), и он сам не знает, что он шпион (по умолчанию);
 //   'classic' — шпион знает, что он шпион, слова не знает (с подсказкой — знает тему) и может угадать слово.
 // Игроки задают друг другу вопросы, потом голосуют, кто шпион.
 //
@@ -10,7 +10,7 @@
 //              word, spyWord, wordCategory, spyIds, firstId, votes: { voterId: targetId }, options, winner, reason }
 // status: 'lobby' → 'play' → 'guess' (шпион угадывает) → 'over'.
 
-import { ANY, CATEGORIES, CATEGORY_KEYS } from './words.js';
+import { ANY, CATEGORIES, CATEGORY_KEYS, similarWords } from './words.js';
 
 export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 20;
@@ -70,8 +70,8 @@ export function startGame(state, rnd = Math.random) {
   if (state.players.length < MIN_PLAYERS) return { error: `нужно хотя бы ${MIN_PLAYERS} игрока` };
   const wordCategory = state.category === ANY ? pick(CATEGORY_KEYS, rnd) : state.category;
   const word = pick(CATEGORIES[wordCategory].words, rnd);
-  // режим «другое слово»: шпиону — другое слово той же темы
-  const spyWord = state.mode === 'classic' ? null : pick(CATEGORIES[wordCategory].words.filter((w) => w !== word), rnd);
+  // режим «другое слово»: шпиону — похожее слово из той же группы (торт ↔ пирожное)
+  const spyWord = state.mode === 'classic' ? null : pick(similarWords(wordCategory, word), rnd);
   const spyCount = Math.min(state.spyCount, maxSpies(state.players.length));
   const spyIds = shuffle(state.players.map((p) => p.id), rnd).slice(0, spyCount);
   const firstId = pick(state.players, rnd).id;
@@ -137,7 +137,10 @@ export function openGuess(state, id, rnd = Math.random) {
   if (state.status !== 'play') return { error: 'сейчас нельзя' };
   if (state.spyWord) return { error: 'в этом режиме шпион не знает, что он шпион — угадывать нечего' };
   if (!isSpy(state, id)) return { error: 'угадывать слово может только шпион 🤫' };
-  const rest = shuffle(CATEGORIES[state.wordCategory].words.filter((w) => w !== state.word), rnd).slice(0, GUESS_OPTIONS - 1);
+  // среди вариантов — сначала похожие слова, чтобы угадать было не так просто
+  const similar = similarWords(state.wordCategory, state.word);
+  const others = shuffle(CATEGORIES[state.wordCategory].words.filter((w) => w !== state.word && !similar.includes(w)), rnd);
+  const rest = [...similar, ...others].slice(0, GUESS_OPTIONS - 1);
   return { state: { ...state, status: 'guess', guesserId: id, options: shuffle([state.word, ...rest], rnd) } };
 }
 
