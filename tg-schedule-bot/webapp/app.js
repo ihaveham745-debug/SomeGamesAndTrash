@@ -2,8 +2,8 @@
 // Расписание и расчёты — те же модули, что у бота: при сборке tgcloud/lib/ копируется в dist/lib/.
 
 import {
-  DAY_NAMES, DAY_SHORT, addDays, baseSubject, bell, dateRange, dayMonth, dayStatus, duration, hhmm,
-  MAX_ROOM_LENGTH, inSemester, isSemesterWeek, isoDate, minutesNow, mondayOf, outOfSemester, pairBySlot, pairsFor,
+  CANCELLED, DAY_NAMES, DAY_SHORT, addDays, baseSubject, bell, dateRange, dayMonth, dayStatus, duration, hhmm,
+  MAX_ROOM_LENGTH, inSemester, isSemesterWeek, isoDate, minutesNow, mondayOf, outOfSemester, pairBySlot, pairsFor, pairsWithCancelled,
   parityWord, parseDate, plural, roomOverride, shortType, today, weekNumber, weekday,
 } from './lib/schedule.js';
 import { GROUP } from './lib/timetable.js';
@@ -103,6 +103,12 @@ function placeHtml(room) {
 
 /** Аудитория пары: в Telegram — кнопка «поменять»; если поменяли — подсвечена и «вместо …». */
 function roomHtml(p, iso) {
+  if (p.cancelled) {
+    const text = `${ICON.pin}${esc(p.room || '—')}`;
+    return canWrite
+      ? `<button class="place place-btn press" type="button" data-room="${esc(p.slot)}" data-iso="${iso}" aria-label="пара отменена — изменить">${text}</button>`
+      : '';
+  }
   const icon = /онлайн/i.test(p.room ?? '') ? ICON.laptop : ICON.pin;
   const was = p.roomWas ? `<small>${esc(p.roomWas)}</small>` : '';
   const inner = `${icon}${esc(p.room || 'аудитория?')}${was}`;
@@ -167,11 +173,12 @@ function pairHtml(p, when, minutes, iso) {
   const { name, subgroup } = splitSubgroup(p.subject);
   const chips = (p.type ? p.type.split(', ') : []).map((t) => `<span class="chip ${typeClass(t)}">${esc(t)}</span>`);
   if (subgroup) chips.push(`<span class="chip sub">${esc(subgroup)}</span>`);
+  if (p.cancelled) chips.unshift(`<span class="chip cancel">пары не будет${p.cancelBy ? ` · ${esc(p.cancelBy)}` : ''}</span>`);
   const progress = when === 'now' && time
     ? `<div class="progress"><div style="width:${Math.round(((minutes - time.start) / (time.end - time.start)) * 100)}%"></div></div>`
     : '';
 
-  return `<li class="pair glass ${when}">
+  return `<li class="pair glass ${p.cancelled ? 'cancelled' : when}">
     <div class="time">${time ? `<b>${hhmm(time.start)}</b><span>${hhmm(time.end)}</span>` : ''}<span class="n">${p.n} пара</span></div>
     <div class="info">
       <div class="subject">${esc(name)}</div>
@@ -193,9 +200,11 @@ function dayHtml(date) {
   const title = `<h2 class="day-title">${cap(DAY_NAMES[weekday(date) - 1])}, ${dayMonth(date)}${label ? ` <span class="badge">${label}</span>` : ''}</h2>`;
   if (!inSemester(date)) return `<div class="day-head">${title}</div>${outOfSemesterHtml(date)}`;
 
-  const pairs = pairsFor(date, state.rooms);
+  const all = pairsWithCancelled(date, state.rooms);
+  const pairs = all.filter((p) => !p.cancelled);
   if (pairs.length === 0) {
-    return `<div class="day-head">${title}<p class="summary">${weekNumber(date)}-я неделя, ${parityWord(date)}</p></div>${emptyHtml('🎉', 'Пар нет', 'Можно отдыхать')}`;
+    const cancelled = all.map((p) => pairHtml(p, '', 0, isoDate(date))).join('');
+    return `<div class="day-head">${title}<p class="summary">${weekNumber(date)}-я неделя, ${parityWord(date)}</p></div>${emptyHtml('🎉', 'Пар нет', 'Можно отдыхать')}${cancelled ? `<ol class="pairs">${cancelled}</ol>` : ''}`;
   }
 
   const first = bell(pairs[0].n);
@@ -206,8 +215,8 @@ function dayHtml(date) {
   const status = isToday ? dayStatus(pairs, minutes) : null;
 
   const items = [];
-  pairs.forEach((p, i) => {
-    const prev = pairs[i - 1];
+  all.forEach((p, i) => {
+    const prev = all[i - 1];
     if (prev && p.n - prev.n > 1) items.push(gapHtml(prev.n + 1, p.n - 1));
     const time = bell(p.n);
     let when = '';
@@ -229,12 +238,14 @@ function weekHtml(date) {
   const sections = [];
   for (let i = 0; i < 7; i++) {
     const day = addDays(monday, i);
-    const pairs = pairsFor(day, state.rooms);
-    if (i === 6 && pairs.length === 0) continue; // пустое воскресенье не показываем
+    const all = pairsWithCancelled(day, state.rooms);
+    const pairs = all.filter((p) => !p.cancelled);
+    if (i === 6 && all.length === 0) continue; // пустое воскресенье не показываем
 
     const isToday = same(day, now);
-    const rows = pairs.map((p) => {
+    const rows = all.map((p) => {
       const time = bell(p.n);
+      if (p.cancelled) return `<li class="cancelled"><b>${time ? hhmm(time.start) : `${p.n}.`}</b><span><s>${esc(p.subject)}</s></span><span class="r">пары не будет</span></li>`;
       const type = p.type ? ` <span class="t">${esc(shortType(p.type))}</span>` : '';
       const hw = homeworkFor(state.notes, isoDate(day), p.subject).length ? ' <span class="hw-mark">📝</span>' : '';
       return `<li><b>${time ? hhmm(time.start) : `${p.n}.`}</b><span>${esc(p.subject)}${type}${hw}</span><span class="r${p.roomWas ? ' changed' : ''}">${esc(p.room ?? '')}</span></li>`;
@@ -374,6 +385,7 @@ function openRoomEditor(slot, iso) {
   const dayOnly = state.rooms.find((r) => r.slot === slot && r.date === iso);
   const always = state.rooms.find((r) => r.slot === slot && r.date === '');
   const current = roomOverride(state.rooms, slot, iso);
+  const cancelled = current?.room === CANCELLED;
   const weekdayName = DAY_NAMES[weekday(date) - 1];
   const everyText = `всегда — ${EVERY_WEEKDAY[weekday(date) - 1]}${pair.week ? (pair.week === 'odd' ? ' нечётной недели' : ' чётной недели') : ''}`;
   const root = document.createElement('div');
@@ -381,8 +393,9 @@ function openRoomEditor(slot, iso) {
   root.innerHTML = `<form class="sheet glass blur" autocomplete="off">
     <div class="sheet-title">Аудитория</div>
     <div class="sheet-subject">${esc(pair.subject)}</div>
-    <div class="sheet-due">${pair.n} пара · по расписанию: ${esc(pair.room || '—')}${current?.authorName ? ` · поменял(а) ${esc(current.authorName)}` : ''}</div>
-    <input class="field" name="room" maxlength="${MAX_ROOM_LENGTH}" placeholder="Например: 305 или 228 КФЕН" value="${esc(current?.room ?? '')}">
+    <div class="sheet-due">${pair.n} пара · по расписанию: ${esc(pair.room || '—')}${current?.authorName ? ` · ${cancelled ? 'отменил(а)' : 'поменял(а)'} ${esc(current.authorName)}` : ''}</div>
+    ${cancelled ? `<div class="sheet-cancelled">${esc(weekdayName)}, ${esc(dayMonth(date))} пары не будет</div>` : ''}
+    <input class="field" name="room" maxlength="${MAX_ROOM_LENGTH}" placeholder="Например: 305 или 228 КФЕН" value="${esc(cancelled ? '' : current?.room ?? '')}">
     <div class="scope">
       <label><input type="radio" name="scope" value="day"${always && !dayOnly ? '' : ' checked'}> только ${esc(weekdayName)}, ${esc(dayMonth(date))}</label>
       <label><input type="radio" name="scope" value="always"${always && !dayOnly ? ' checked' : ''}> ${esc(everyText)}</label>
@@ -392,7 +405,10 @@ function openRoomEditor(slot, iso) {
       <button class="btn press" type="button" data-close>Отмена</button>
       <button class="btn primary press" type="submit">Сохранить</button>
     </div>
-    ${dayOnly || always ? `<button class="btn press reset" type="button" data-reset>Вернуть как в расписании</button>` : ''}
+    ${cancelled
+      ? `<button class="btn press reset" type="button" data-reset>Пара будет — вернуть</button>`
+      : `<button class="btn press reset" type="button" data-cancel>Пары не будет (только ${esc(dayMonth(date))})</button>
+    ${dayOnly || always ? `<button class="btn press reset" type="button" data-reset>Вернуть как в расписании</button>` : ''}`}
     <p class="hint">Замену видят все в группе — и в боте, и в приложении.</p>
   </form>`;
   document.body.append(root);
@@ -416,6 +432,7 @@ function openRoomEditor(slot, iso) {
       // «вернуть»: убираем замену на этот день, а если её нет — постоянную
       send(null, dayOnly ? iso : '');
     }
+    if (e.target.closest('[data-cancel]')) send(CANCELLED, iso);
   });
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -471,7 +488,7 @@ function renderChrome() {
   const now = today();
   $('strip').innerHTML = DAY_SHORT.slice(0, 6).map((short, i) => {
     const day = addDays(monday, i);
-    const count = pairsFor(day).length;
+    const count = pairsFor(day, state.rooms).length;
     const cls = ['day', 'press', same(day, now) && 'today', state.view === 'day' && same(day, state.date) && 'selected'];
     const label = `${cap(DAY_NAMES[i])}, ${dayMonth(day)}: ${count ? pairsWord(count) : 'пар нет'}`;
     return `<button type="button" class="${cls.filter(Boolean).join(' ')}" data-date="${isoDate(day)}" aria-label="${label}">

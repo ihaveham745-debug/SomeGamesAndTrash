@@ -9,8 +9,8 @@
 // Замены аудиторий — store.rooms (в боте lib/rooms.js): all() / set(...) / clear(slot, date).
 
 import {
-  DAY_SHORT, addDays, dayMonth, ddmm, escapeHtml, formatDay, formatParity, formatWeek,
-  isSemesterWeek, isoDate, mondayOf, pairsFor, parseDate, today, validateRoomChange, weekNumber, weekday,
+  CANCELLED, DAY_SHORT, addDays, dayMonth, ddmm, escapeHtml, formatDay, formatParity, formatWeek,
+  isSemesterWeek, isoDate, mondayOf, pairsFor, pairsWithCancelled, parseDate, today, validateRoomChange, weekNumber, weekday,
 } from './schedule.js';
 import { GROUP, MINI_APP_URL } from './timetable.js';
 import { cleanText, findSubject, nextPairDate, validateNote } from './homework.js';
@@ -54,6 +54,7 @@ export const COMMANDS = [
   { command: 'dz', description: '📝 Домашние задания (или /dz мат: текст)' },
   { command: 'note', description: '🗒 Заметка к предмету: /note хим: текст' },
   { command: 'aud', description: '🚪 Поменять аудиторию: /aud 2 305' },
+  { command: 'cancel', description: '❌ Пары не будет: /cancel 28.10 5' },
   { command: 'help', description: '💬 Что умеет бот' },
 ];
 
@@ -88,6 +89,7 @@ const HELP_TEXT = [
   'Записать ДЗ к ближайшей паре: <code>/dz мат: №5–10</code>',
   'Заметка к предмету: <code>/note хим: формулы на стр. 12</code>',
   'Аудитория поменялась: <code>/aud 2 305</code> — 2-я пара сегодня (подробнее — /aud)',
+  'Пары не будет: <code>/cancel 28.10 5</code> — 5-я пара 28 октября (подробнее — /cancel)',
   '',
   'Стрелки ◀️ ▶️ под расписанием листают дни и недели прямо в сообщении.',
   'А кнопка <b>«Расписание»</b> слева от поля ввода открывает приложение — там всё то же, но удобнее.',
@@ -235,6 +237,58 @@ async function roomCommand(args, message, nowMs, store) {
   };
 }
 
+// --- Отмена пары: /cancel ---
+
+const CANCEL_USAGE = [
+  '❌ <b>Пары не будет</b>',
+  '',
+  '<code>/cancel 5</code> — 5-я пара сегодня',
+  '<code>/cancel 28.10 5</code> — 5-я пара 28 октября',
+  '<code>/cancel 28.10 5 вернуть</code> — пара всё-таки будет',
+  '',
+  'Видят все в группе. В приложении — нажми на аудиторию у пары.',
+].join('\n');
+
+async function cancelCommand(args, message, nowMs, store) {
+  const words = args.split(/\s+/).filter(Boolean);
+  let iso = isoDate(today(nowMs));
+  const date = parseDayMonth(words[0] ?? '', nowMs);
+  if (date) {
+    iso = date;
+    words.shift();
+  }
+  const n = Number(words.shift());
+  const restore = /^(вернуть|сброс)$/i.test(words[0] ?? '');
+  if (!Number.isInteger(n) || words.length > (restore ? 1 : 0)) return { text: `🤔 Не понял.\n\n${CANCEL_USAGE}` };
+
+  const day = parseDate(iso);
+  const pairs = pairsWithCancelled(day).filter((p) => p.n === n);
+  const when = `${DAY_SHORT[weekday(day) - 1]}, ${dayMonth(day)}`;
+  if (pairs.length === 0) return { text: `🤔 ${when} ${n}-й пары нет.\n\n${CANCEL_USAGE}` };
+  const rooms = roomsOf(store);
+  const keyboard = { inline_keyboard: [[button(`📅 ${shortDate(day)}`, 'd', day)]] };
+  const what = pairs.map((p) => `<b>${escapeHtml(p.subject)}</b>`).join(', ');
+
+  if (restore) {
+    const cancelled = await rooms.all().then((all) => pairs.filter((p) => all.some((r) => r.slot === p.slot && r.date === iso && r.room === CANCELLED)));
+    if (cancelled.length === 0) return { text: `🤔 ${what} (${n}-я пара, ${when}) и так не отменена.`, reply_markup: keyboard };
+    await Promise.all(cancelled.map((p) => rooms.clear(p.slot, iso)));
+    return { text: `✅ ${what} — ${n}-я пара ${when} снова по расписанию.`, reply_markup: keyboard };
+  }
+  try {
+    for (const p of pairs) {
+      await rooms.set({ slot: p.slot, date: iso, room: CANCELLED, authorId: message.from?.id ?? 0, authorName: authorName(message.from) });
+    }
+  } catch (err) {
+    console.error('rooms.set failed', err);
+    return { text: '😕 Не получилось сохранить, попробуй ещё раз чуть позже.' };
+  }
+  return {
+    text: `❌ ${what} — ${n}-й пары ${when} не будет. Видят все в группе.\nПередумали — <code>/cancel ${ddmm(day)} ${n} вернуть</code>`,
+    reply_markup: keyboard,
+  };
+}
+
 // --- Домашние задания и заметки ---
 
 const USAGE = {
@@ -346,6 +400,7 @@ const ACTIONS = {
   dz: (now, store, message, args) => homeworkCommand('hw', args, message, now, store),
   note: (now, store, message, args) => homeworkCommand('note', args, message, now, store),
   aud: (now, store, message, args) => (args ? roomCommand(args, message, now, store) : { text: AUD_USAGE }),
+  cancel: (now, store, message, args) => (args ? cancelCommand(args, message, now, store) : { text: CANCEL_USAGE }),
 };
 
 const COMMAND = /^\/([a-z_]+)(?:@(\w+))?(?:\s|$)/i;

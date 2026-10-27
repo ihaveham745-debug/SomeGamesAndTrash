@@ -89,8 +89,10 @@ export function baseSubject(subject) {
   return subject.replace(/\s*\(подгр\.[^)]*\)$/, '');
 }
 
-// --- Замена аудитории ---
+// --- Замена аудитории и отмена пары ---
 // Аудиторию пары можно поменять: на один день (date = 'ГГГГ-ММ-ДД') или «всегда» (date = '').
+// Замена с пустой аудиторией (room = CANCELLED) — пару отменили: её нет в pairsFor, но она есть
+// в pairsWithCancelled с cancelled: true — чтобы показать «пары не будет».
 // Замена rooms: { slot, date, room, authorName }. slot — какая это пара в расписании:
 // '3|2|odd|Физика (подгр. А)' — день недели, номер, неделя ('' — каждая), предмет.
 
@@ -107,12 +109,20 @@ export function roomOverride(rooms, slot, iso) {
   return rooms.find((r) => r.slot === slot && r.date === iso) ?? rooms.find((r) => r.slot === slot && r.date === '') ?? null;
 }
 
+/** Аудитория-метка «пары не будет». Отменить можно только на один день. */
+export const CANCELLED = '';
+
 /**
- * Пары дня. rooms — замены аудиторий из базы: у пары с заменой room — новая аудитория,
+ * Пары дня (без отменённых). rooms — замены аудиторий из базы: у пары с заменой room — новая аудитория,
  * roomWas — какая была по расписанию, roomBy — кто поменял, roomDay — замена только на этот день.
  * slot у каждой пары — чтобы приложение могло её поменять.
  */
 export function pairsFor(date, rooms = []) {
+  return pairsWithCancelled(date, rooms).filter((p) => !p.cancelled);
+}
+
+/** Пары дня вместе с отменёнными (у них cancelled: true, cancelBy — кто отменил). */
+export function pairsWithCancelled(date, rooms = []) {
   if (!inSemester(date)) return [];
   const parity = isOddWeek(date) ? 'odd' : 'even';
   const iso = isoDate(date);
@@ -124,6 +134,7 @@ export function pairsFor(date, rooms = []) {
     .map((p) => {
       const slot = pairSlot(wd, p);
       const o = roomOverride(rooms, slot, iso);
+      if (o?.room === CANCELLED) return { ...p, slot, cancelled: true, cancelBy: o.authorName ?? null };
       if (!o || o.room === p.room) return { ...p, slot };
       return { ...p, slot, room: o.room, roomWas: p.room, roomBy: o.authorName ?? null, roomDay: o.date !== '' };
     });
@@ -265,7 +276,9 @@ export function formatDay(date, nowMs = Date.now(), notes = [], rooms = []) {
   if (!inSemester(date)) return `${header}\n\n${outOfSemester(date)}`;
 
   const pairs = pairsFor(date, rooms);
-  if (pairs.length === 0) return `${header}\n<i>${weekLine(date)}</i>\n\nПар нет — отдыхаем 🎉`;
+  const cancelled = pairsWithCancelled(date, rooms).filter((p) => p.cancelled).map(cancelledLine);
+  const cancelledBlock = cancelled.length ? `\n\n${cancelled.join('\n')}` : '';
+  if (pairs.length === 0) return `${header}\n<i>${weekLine(date)}</i>\n\nПар нет — отдыхаем 🎉${cancelledBlock}`;
 
   const first = bell(pairs[0].n);
   const last = bell(pairs[pairs.length - 1].n);
@@ -285,7 +298,12 @@ export function formatDay(date, nowMs = Date.now(), notes = [], rooms = []) {
     body.push(pairCard(p, status?.kind === 'now' && status.pair === p, hw));
   });
 
-  return `${intro.join('\n')}\n\n${body.join('\n')}`;
+  return `${intro.join('\n')}\n\n${body.join('\n')}${cancelledBlock}`;
+}
+
+/** «❌ 5 пара · Русский язык — пары не будет» */
+function cancelledLine(p) {
+  return `❌ <s>${p.n} пара · ${escapeHtml(p.subject)}</s> — <b>пары не будет</b>${p.cancelBy ? ` <i>(${escapeHtml(p.cancelBy)})</i>` : ''}`;
 }
 
 export function formatWeek(date, nowMs = Date.now(), notes = [], rooms = []) {
@@ -299,7 +317,7 @@ export function formatWeek(date, nowMs = Date.now(), notes = [], rooms = []) {
   const parts = [`🗓 <b>${weekLine(monday)}</b>\n<i>${dateRange(monday, sunday)}</i>`];
   for (let i = 0; i < 7; i++) {
     const day = addDays(monday, i);
-    const pairs = pairsFor(day, rooms);
+    const pairs = pairsWithCancelled(day, rooms);
     if (pairs.length === 0 && i === 6) continue; // пустое воскресенье не показываем
 
     const mark = day.getTime() === todayMs ? ' 👈 сегодня' : '';
@@ -310,6 +328,7 @@ export function formatWeek(date, nowMs = Date.now(), notes = [], rooms = []) {
     }
     const lines = pairs.map((p) => {
       const time = bell(p.n);
+      if (p.cancelled) return `<s>${time ? hhmm(time.start) : `${p.n}.`} ${escapeHtml(p.subject)}</s> ❌ пары не будет`;
       let line = `${time ? `<b>${hhmm(time.start)}</b>` : `${p.n}.`} ${escapeHtml(p.subject)}`;
       if (p.type) line += ` <i>${escapeHtml(shortType(p.type))}</i>`;
       if (p.room) line += ` · ${placeIcon(p.room)} ${escapeHtml(p.room)}${p.roomWas ? '*' : ''}`;
@@ -340,7 +359,8 @@ export const MAX_ROOM_LENGTH = 30;
 
 /**
  * Проверка замены аудитории: { slot, date, room } → текст ошибки или null.
- * date — '' («всегда») или день, в который эта пара есть в расписании; room — пусто = вернуть как было.
+ * date — '' («всегда») или день, в который эта пара есть в расписании; room — null = вернуть как было,
+ * CANCELLED — пары не будет.
  */
 export function validateRoomChange({ slot, date, room }) {
   const pair = pairBySlot(slot);
@@ -349,7 +369,8 @@ export function validateRoomChange({ slot, date, room }) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '') || isoDate(parseDate(date)) !== date) return 'Неверная дата';
     if (!pairsFor(parseDate(date)).some((p) => p.slot === slot)) return 'В этот день такой пары нет';
   }
-  if (room !== null && room !== undefined) {
+  if (room === CANCELLED && date === '') return 'Отменить пару можно только на один день';
+  if (room !== null && room !== undefined && room !== CANCELLED) {
     const clean = String(room).trim();
     if (!clean) return 'Напиши аудиторию';
     if (clean.length > MAX_ROOM_LENGTH) return `Слишком длинно: больше ${MAX_ROOM_LENGTH} символов`;

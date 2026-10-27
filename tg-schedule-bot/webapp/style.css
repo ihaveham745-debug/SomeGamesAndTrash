@@ -628,6 +628,27 @@ main {
   opacity: 0.5;
 }
 
+.chip.cancel {
+  --tone: #ff453a;
+}
+
+.pair.cancelled .subject,
+.pair.cancelled .time b {
+  text-decoration: line-through;
+  color: var(--label-2);
+}
+
+.wday li.cancelled,
+.wday li.cancelled .r {
+  color: #ff453a;
+}
+
+.sheet-cancelled {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ff453a;
+}
+
 .pair.now {
   --ring: inset 0 0 0 1.5px color-mix(in srgb, var(--green-dot) 55%, transparent);
 }
