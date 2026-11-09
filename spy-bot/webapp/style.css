@@ -1,0 +1,242 @@
+/* «Шпион» — тёмная тема, крупные кнопки: телефон передают из рук в руки. */
+
+:root {
+  --bg: #0b0d14;
+  --card: #171a26;
+  --card-2: #20253a;
+  --text: #f2f3f7;
+  --muted: #9aa0b4;
+  --accent: #ff4d6d;
+  --accent-2: #7c5cff;
+  --ok: #34c759;
+  --radius: 22px;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(80vmax 60vmax at 0% 0%, rgba(124, 92, 255, 0.25), transparent 60%),
+    radial-gradient(80vmax 60vmax at 100% 100%, rgba(255, 77, 109, 0.2), transparent 60%),
+    var(--bg);
+  color: var(--text);
+  font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+main {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 100vh;
+}
+
+h1 {
+  margin: 8px 0 0;
+  font-size: 34px;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
+p {
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.label {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stepper .value {
+  font-size: 30px;
+  font-weight: 800;
+  min-width: 60px;
+  text-align: center;
+}
+
+.stepper button {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  font-size: 28px;
+  background: var(--card-2);
+}
+
+.stepper button:disabled {
+  opacity: 0.3;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--card-2);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.chip.on {
+  background: var(--accent-2);
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.switch input {
+  appearance: none;
+  width: 51px;
+  height: 31px;
+  border-radius: 999px;
+  background: var(--card-2);
+  position: relative;
+  transition: background 0.2s;
+  flex: none;
+}
+
+.switch input::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+}
+
+.switch input:checked {
+  background: var(--ok);
+}
+
+.switch input:checked::after {
+  transform: translateX(20px);
+}
+
+.big {
+  width: 100%;
+  min-height: 58px;
+  border-radius: 20px;
+  font-size: 18px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 8px 24px rgba(255, 77, 109, 0.3);
+}
+
+.big.ghost {
+  background: var(--card-2);
+  box-shadow: none;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* карточка роли: сначала рубашкой вверх */
+.role {
+  min-height: 46vh;
+  border-radius: 28px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+  background: var(--card);
+  font-size: 18px;
+}
+
+.role.hidden {
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.04) 0 12px, transparent 12px 24px),
+    linear-gradient(135deg, #2a1f4d, #3b1830);
+}
+
+.role .emoji {
+  font-size: 72px;
+  line-height: 1;
+}
+
+.role .word {
+  font-size: 34px;
+  font-weight: 800;
+  margin: 10px 0 6px;
+}
+
+.role.spy {
+  background: linear-gradient(160deg, #4a0f1d, #1a0b12);
+}
+
+.timer {
+  font-size: 64px;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer.done {
+  color: var(--accent);
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+}
+
+.row > * {
+  flex: 1;
+}
