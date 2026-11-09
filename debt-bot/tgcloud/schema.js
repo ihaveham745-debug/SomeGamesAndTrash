@@ -14,8 +14,12 @@ export const users = table('users', {
   graceDays: integer('grace_days'),
   rate: integer('rate'),
   apr: integer('apr'),
+  // ссылка для заявок: t.me/<бот>?start=r_<inviteToken> — друг открывает и просит в долг
+  inviteToken: text('invite_token'),
   created: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
-});
+}, (t) => ({
+  inviteIdx: uniqueIndex('idx_users_invite').on(t.inviteToken),
+}));
 
 // Друзья в тетрадке: у каждого, кто даёт в долг (ownerId), свой список.
 // nameKey — имя в нижнем регистре (по нему находим друга в записях «петя 500»).
@@ -47,4 +51,20 @@ export const ops = table('ops', {
   due: integer('due'),
   rate: integer('rate'),
   apr: integer('apr'),
+});
+
+// Заявки «дай в долг»: друг (userId) просит у владельца тетрадки (ownerId).
+// status: 'pending' → 'approved' (займ записан в тетрадку) или 'declined'.
+// terms — условия, которые попросил друг ({ days } / { until } / null — обычные владельца).
+// ownerMsgId — сообщение с кнопками у владельца (после ответа его правим).
+export const requests = table('requests', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ownerId: integer('owner_id').notNull(),
+  userId: integer('user_id').notNull(),
+  amount: integer('amount').notNull(),
+  note: text('note'),
+  terms: text('terms', { mode: 'json' }),
+  status: text('status').notNull(),
+  ownerMsgId: integer('owner_msg_id'),
+  created: integer('created_at').notNull(),
 });

@@ -14,6 +14,7 @@
 
 import { DAY, DEFAULT_TERMS, MAX_APR, MAX_GRACE_DAYS, debtOf, ratePercent, rateText } from './loans.js';
 import { money, parseAmount, parseEntry, shortDate, untilToUnix } from './money.js';
+import { askPrompt, createRequest, decideRequest, inviteLink, parseAsk } from './requests.js';
 
 export const BUTTONS = {
   list: '💰 Мне должны',
@@ -24,6 +25,7 @@ export const BUTTONS = {
 export const COMMANDS = [
   { command: 'list', description: '💰 Кто мне должен' },
   { command: 'mine', description: '🙈 Кому должен я' },
+  { command: 'invite', description: '📨 Ссылка для заявок: друг сам просит в долг' },
   { command: 'terms', description: '⚙️ Условия: дней без процентов и % потом' },
   { command: 'help', description: '❓ Как пользоваться' },
 ];
@@ -56,11 +58,14 @@ export const HELP_TEXT = [
   '',
   `«${BUTTONS.list}» — список и итог. Нажми на друга: история, кнопки «вернул», «напомнить», «отменить».`,
   '',
+  '📨 <b>Заявки.</b> /invite — твоя ссылка для заявок: друг открывает её, пишет, сколько хочет взять,',
+  'а тебе приходит заявка «одобрить / отказать». Одобрил — займ записан, друг подключён.',
+  '',
   '🔗 У каждого друга есть ссылка: перешли её — друг увидит свой долг, получит напоминание',
   'и сможет нажать «я вернул» (ты подтвердишь).',
 ].join('\n');
 
-const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+export const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export function userName(user) {
   return [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim() || (user?.username ? `@${user.username}` : 'Кто-то');
@@ -85,12 +90,12 @@ export function loanTerms(me, terms, now) {
 }
 
 /** «без процентов до 09.12; не вернёт всё к этому дню — 61,9% годовых за весь срок» */
-const termsText = (due, apr) => (apr > 0
+export const termsText = (due, apr) => (apr > 0
   ? `без процентов до ${shortDate(due - 1)}; не вернёт всё к этому дню — ${ratePercent(apr)} годовых за весь срок`
   : 'без процентов');
 
 /** «61,9% годовых, 55 дн. без процентов» — условия новых займов. */
-const userTermsText = (t) => (t.apr > 0 ? `до ${t.graceDays} дн. без процентов, потом ${ratePercent(t.apr)} годовых за весь срок` : 'без процентов');
+export const userTermsText = (t) => (t.apr > 0 ? `до ${t.graceDays} дн. без процентов, потом ${ratePercent(t.apr)} годовых за весь срок` : 'без процентов');
 
 /** «2 045 ₽ (в т.ч. проценты 45 ₽)» */
 const totalText = (d) => `${money(d.total)}${d.interest > 0 ? ` (в т.ч. проценты ${money(d.interest)})` : ''}`;
@@ -119,6 +124,8 @@ export async function handleMessage(message, deps) {
   const me = await deps.store.getUser(user.id);
 
   if (cmd === 'start' && args.startsWith('f_')) return linkFriend(chat.id, user, args.slice(2), deps);
+  if (cmd === 'start' && args.startsWith('r_')) return startAsk(chat.id, user, await deps.store.userByInvite(args.slice(2)), deps);
+  if (cmd === 'invite') return inviteMessage(chat.id, user.id, deps);
   if (cmd === 'start') {
     await deps.store.setPending(user.id, null);
     await deps.tg.setup?.();
@@ -138,6 +145,16 @@ export async function handleMessage(message, deps) {
 
   // Бот ждёт сумму (после кнопок «вернул часть» / «дал ещё»)
   const pending = me?.pending ? { ...me.pending } : null;
+  // Друг пишет, сколько хочет взять (после ссылки для заявок / «попросить ещё»)
+  if (pending?.kind === 'ask') {
+    const ask = parseAsk(text);
+    if (!ask) return deps.tg.send(chat.id, '🤔 Напиши сумму, например <code>500</code> или <code>500 такси на 14 дней</code>.');
+    await deps.store.setPending(user.id, null);
+    const res = await createRequest(pending.ownerId, user, ask, deps);
+    if (res.error) return deps.tg.send(chat.id, `🤔 ${esc(res.error)}`, KEYBOARD);
+    const owner = await deps.store.getUser(pending.ownerId);
+    return deps.tg.send(chat.id, `📨 Заявка на <b>${money(ask.amount)}</b> отправлена ${esc(owner?.name ?? '')}. Как ответит — напишу.`, KEYBOARD);
+  }
   if (pending?.friendId) {
     // «300» или «300 такси»
     const parsed = parseAmount(text) !== null ? { amount: parseAmount(text), note: '' } : parseEntry(`x ${text}`);
@@ -168,6 +185,25 @@ export async function handleMessage(message, deps) {
     if (amount <= 0) return deps.tg.send(chat.id, `✅ ${esc(friend.name)} тебе ничего не должен(а).`);
   }
   return record(chat.id, user, friend, entry.kind, amount, entry.note, deps, entry.kind === 'lend' ? loanTerms(me, entry.terms, deps.now()) : null);
+}
+
+/** Друг открыл ссылку для заявок (или нажал «попросить ещё») — спрашиваем сумму. */
+async function startAsk(chatId, user, owner, deps) {
+  if (!owner) return deps.tg.send(chatId, '🤔 Ссылка устарела. Попроси новую.', KEYBOARD);
+  if (owner.userId === user.id) return deps.tg.send(chatId, '🙂 Это твоя ссылка для заявок — перешли её друзьям.', KEYBOARD);
+  await deps.store.setPending(user.id, { kind: 'ask', ownerId: owner.userId });
+  return deps.tg.send(chatId, await askPrompt(owner, deps));
+}
+
+async function inviteMessage(chatId, ownerId, deps) {
+  const link = await inviteLink(ownerId, deps);
+  return deps.tg.send(chatId, [
+    '📨 <b>Твоя ссылка для заявок</b> — перешли её друзьям:',
+    link,
+    '',
+    'Друг открывает её и пишет, сколько хочет взять. Тебе придёт заявка с кнопками «одобрить / отказать».',
+    'Одобришь — займ запишется по твоим условиям (/terms), а друг подключится к тетрадке.',
+  ].join('\n'));
 }
 
 async function termsCommand(chatId, userId, me, args, deps) {
@@ -228,7 +264,11 @@ export async function listView(ownerId, deps) {
   });
   const owing = rows.filter((r) => r.balance !== 0).sort((a, b) => b.balance - a.balance);
   const closed = rows.filter((r) => r.balance === 0);
-  if (rows.length === 0) return [`📒 Тетрадка пустая.\n\nДал в долг — напиши, например, <code>Петя 500</code>.`, KEYBOARD];
+  if (rows.length === 0) {
+    return [`📒 Тетрадка пустая.\n\nДал в долг — напиши, например, <code>Петя 500</code>. Или дай друзьям ссылку для заявок — пусть просят сами.`, {
+      inline_keyboard: [[{ text: '📨 Ссылка для заявок', callback_data: 'invite' }, { text: '⚙️ Условия', callback_data: 'terms' }]],
+    }];
+  }
   const total = owing.reduce((s, r) => s + Math.max(r.balance, 0), 0);
   const interest = owing.reduce((s, r) => s + r.d.interest, 0);
   const text = [
@@ -240,7 +280,7 @@ export async function listView(ownerId, deps) {
     ...(closed.length ? ['', `<i>Вернули всё: ${closed.map((r) => esc(r.f.name)).join(', ')}</i>`] : []),
   ].join('\n');
   const buttons = [...owing, ...closed].map((r) => [{ text: `${r.f.name}${r.balance ? ` · ${money(r.balance)}` : ' ✓'}`, callback_data: `f:${r.f.id}` }]);
-  buttons.push([{ text: '⚙️ Условия займов', callback_data: 'terms' }]);
+  buttons.push([{ text: '📨 Ссылка для заявок', callback_data: 'invite' }, { text: '⚙️ Условия', callback_data: 'terms' }]);
   return [text, { inline_keyboard: buttons }];
 }
 
@@ -279,21 +319,31 @@ function loanState(l, now) {
 
 /** «Я должен» — долги, где я подключённый друг → [text, markup]. */
 export async function mineView(userId, deps) {
-  const links = await deps.store.linkedTo(userId);
+  const [links, waiting] = await Promise.all([deps.store.linkedTo(userId), deps.store.pendingFrom(userId)]);
   const rows = [];
   for (const f of links) {
     const d = await owed(deps, f.id);
-    if (d.total <= 0) continue;
     const owner = await deps.store.getUser(f.ownerId);
     rows.push({ f, d, balance: d.total, ownerName: owner?.name ?? 'кто-то' });
   }
-  if (rows.length === 0) return ['🙈 Ты никому не должен(а) — по крайней мере, в этом боте.', KEYBOARD];
+  const owing = rows.filter((r) => r.balance > 0);
+  const names = new Map(rows.map((r) => [r.f.ownerId, r.ownerName]));
+  for (const r of waiting) if (!names.has(r.ownerId)) names.set(r.ownerId, (await deps.store.getUser(r.ownerId))?.name ?? 'кто-то');
   const now = deps.now();
-  const text = ['🙈 <b>Ты должен(а)</b>', '', ...rows.map((r) => {
-    const status = statusLine(r.d, now);
-    return `• ${esc(r.ownerName)} — ${totalText(r.d)}${status ? `\n   ${status}` : ''}`;
-  })].join('\n');
-  return [text, { inline_keyboard: rows.map((r) => [{ text: `💸 Я вернул(а) ${r.ownerName} ${money(r.balance)}`, callback_data: `paid:${r.f.id}` }]) }];
+  const text = [
+    owing.length ? '🙈 <b>Ты должен(а)</b>' : '🙈 Ты никому не должен(а) — по крайней мере, в этом боте.',
+    ...(owing.length ? ['', ...owing.map((r) => {
+      const status = statusLine(r.d, now);
+      return `• ${esc(r.ownerName)} — ${totalText(r.d)}${status ? `\n   ${status}` : ''}`;
+    })] : []),
+    ...(waiting.length ? ['', ...waiting.map((r) => `⏳ Заявка ${esc(names.get(r.ownerId))} на ${money(r.amount)} ждёт ответа`)] : []),
+  ].join('\n');
+  const buttons = [
+    ...owing.map((r) => [{ text: `💸 Я вернул(а) ${r.ownerName} ${money(r.balance)}`, callback_data: `paid:${r.f.id}` }]),
+    ...rows.filter((r) => !waiting.some((w) => w.ownerId === r.f.ownerId))
+      .map((r) => [{ text: `🙋 Попросить в долг у ${r.ownerName}`, callback_data: `ask:${r.f.ownerId}` }]),
+  ];
+  return [text, buttons.length ? { inline_keyboard: buttons } : KEYBOARD];
 }
 
 // --- Друг открыл ссылку ---
@@ -328,6 +378,22 @@ export async function handleCallback(query, deps) {
   if (action === 'home') {
     await answer();
     return edit(...await listView(user.id, deps));
+  }
+  if (action === 'invite') {
+    await answer();
+    return inviteMessage(chatId, user.id, deps);
+  }
+  if (action === 'ask') { // друг: «попросить ещё» у владельца, к тетрадке которого подключён
+    const ownerId = Number(arg);
+    if (!(await deps.store.linkedTo(user.id)).some((f) => f.ownerId === ownerId)) return answer('Попроси у друга ссылку для заявок', true);
+    await answer();
+    return startAsk(chatId, user, await deps.store.getUser(ownerId), deps);
+  }
+  if (action === 'rqok' || action === 'rqno') {
+    const res = await decideRequest(Number(arg), user, action === 'rqok', deps);
+    await answer(res.done ? (res.approved ? 'Одобрено' : 'Отказано') : res.text, !res.done);
+    if (!res.done) await edit(res.text);
+    return undefined;
   }
   if (action === 'terms') {
     await answer();

@@ -7,30 +7,49 @@
 
 import { askPaid, cleanName, friendLink, loanTerms, nameKey, nudgeFriend, owed, record, userName, userTerms } from './app.js';
 import { MAX_APR, MAX_GRACE_DAYS } from './loans.js';
+import { createRequest, decideRequest, inviteLink } from './requests.js';
 import { MAX_AMOUNT, untilToUnix } from './money.js';
 
 export class ApiError extends Error {}
 
 const OP_FIELDS = ({ id, kind, amount, note, at, due, rate, apr }) => ({ id, kind, amount, note, at, due, rate, apr });
 
-/** Всё для приложения: мои условия, мои друзья с записями и мои долги другим. */
+/**
+ * Всё для приложения: мои условия, мои друзья с записями, мои долги другим,
+ * заявки ко мне (requests) и мои заявки (myRequests), ссылка для заявок.
+ */
 export async function state(userId, deps) {
-  const [me, list, all, links] = await Promise.all([
+  const [me, list, all, links, incoming, outgoing] = await Promise.all([
     deps.store.getUser(userId), deps.store.friendsOf(userId), deps.store.opsOfOwner(userId), deps.store.linkedTo(userId),
+    deps.store.pendingTo(userId), deps.store.pendingFrom(userId),
   ]);
+  const nameOf = async (id) => (await deps.store.getUser(id))?.name ?? 'кто-то';
   const mine = [];
   for (const f of links) {
     const owner = await deps.store.getUser(f.ownerId);
-    mine.push({ friendId: f.id, ownerName: owner?.name ?? 'кто-то', ops: (await deps.store.opsOf(f.id)).map(OP_FIELDS) });
+    mine.push({
+      friendId: f.id, ownerId: f.ownerId, ownerName: owner?.name ?? 'кто-то', ownerTerms: userTerms(owner),
+      ops: (await deps.store.opsOf(f.id)).map(OP_FIELDS),
+    });
   }
+  const requests = [];
+  for (const r of incoming) {
+    const friend = list.find((f) => f.linkedUserId === r.userId);
+    requests.push({ id: r.id, name: await nameOf(r.userId), friendId: friend?.id ?? null, amount: r.amount, note: r.note, terms: r.terms, created: r.created });
+  }
+  const myRequests = [];
+  for (const r of outgoing) myRequests.push({ id: r.id, ownerId: r.ownerId, ownerName: await nameOf(r.ownerId), amount: r.amount, note: r.note });
   return {
     now: deps.now(),
     terms: userTerms(me),
+    inviteLink: await inviteLink(userId, deps),
     friends: list.map((f) => ({
       id: f.id, name: f.name, linked: Boolean(f.linkedUserId), link: friendLink(deps, f),
       ops: all.filter((o) => o.friendId === f.id).map(OP_FIELDS),
     })),
     mine,
+    requests,
+    myRequests,
   };
 }
 
@@ -129,6 +148,20 @@ export async function apiCall(name, input, user, deps) {
       const amount = await askPaid(friend, deps);
       if (!amount) throw new ApiError('Ты уже ничего не должен(а)');
       return { asked: amount };
+    }
+
+    case 'decide': { // владелец: { requestId, approve }
+      const res = await decideRequest(Number(input.requestId), user, Boolean(input.approve), deps);
+      if (!res.done) throw new ApiError(res.text);
+      break;
+    }
+
+    case 'ask': { // друг просит ещё у владельца, к тетрадке которого подключён: { ownerId, amount, note, terms }
+      const ownerId = Number(input.ownerId);
+      if (!(await deps.store.linkedTo(id)).some((f) => f.ownerId === ownerId)) throw new ApiError('Попроси у друга ссылку для заявок');
+      const res = await createRequest(ownerId, user, { amount: amountOf(input.amount), note: cleanNote(input.note), terms: termsInput(input.terms) }, deps);
+      if (res.error) throw new ApiError(res.error);
+      break;
     }
 
     default:

@@ -40,6 +40,7 @@ function setup() {
   const users = new Map();
   let friends = [];
   let ops = [];
+  const requests = [];
   let nextId = 1;
   let tok = 0;
   const store = {
@@ -47,6 +48,18 @@ function setup() {
     putUser: async (u) => void users.set(u.userId, { pending: null, ...users.get(u.userId), ...u }),
     setPending: async (id, pending) => void (users.get(id).pending = pending),
     setTerms: async (id, t) => void Object.assign(users.get(id), t),
+    userByInvite: async (token) => [...users.values()].find((u) => u.inviteToken === token) ?? null,
+    setInvite: async (id, token) => void (users.get(id).inviteToken = token),
+    request: async (id) => { const r = requests.find((x) => x.id === id); return r ? { ...r } : null; },
+    addRequest: async (r) => { const id = nextId++; requests.push({ id, ownerMsgId: null, ...r }); return id; },
+    setRequestMsg: async (id, msgId) => void (requests.find((r) => r.id === id).ownerMsgId = msgId),
+    closeRequest: async (id, status) => {
+      const r = requests.find((x) => x.id === id && x.status === 'pending');
+      if (r) r.status = status;
+      return Boolean(r);
+    },
+    pendingTo: async (ownerId) => requests.filter((r) => r.ownerId === ownerId && r.status === 'pending'),
+    pendingFrom: async (userId) => requests.filter((r) => r.userId === userId && r.status === 'pending'),
     friend: async (id) => friends.find((f) => f.id === id) ?? null,
     friendByName: async (ownerId, key) => friends.find((f) => f.ownerId === ownerId && f.nameKey === key) ?? null,
     friendByToken: async (token) => friends.find((f) => f.token === token) ?? null,
@@ -70,7 +83,7 @@ function setup() {
   };
   const out = [];
   const tg = {
-    send: async (chatId, text, markup) => void out.push({ type: 'send', chatId, text, markup }),
+    send: async (chatId, text, markup) => { out.push({ type: 'send', chatId, text, markup }); return { message_id: 100 + out.length }; },
     edit: async (chatId, msgId, text, markup) => void out.push({ type: 'edit', chatId, text, markup }),
     answer: async (id, text, alert) => void out.push({ type: 'answer', text, alert }),
   };
@@ -105,7 +118,7 @@ test('дал, ещё дал, вернул часть, вернул всё', asyn
 
   const list = await say(me, BUTTONS.list);
   assert.match(list[0].text, /Тебе должны: 2 300 ₽<\/b>\n\n• Петя — 2 000 ₽\n• Вася — 300 ₽/);
-  assert.deepEqual(buttons(list[0].markup), ['f:1', 'f:4', 'terms']);
+  assert.deepEqual(buttons(list[0].markup), ['f:1', 'f:4', 'invite', 'terms']);
 
   assert.match((await say(me, 'петя вернул 700'))[0].text, /Петя вернул\(а\) 700 ₽\nВсего должен\(а\): <b>1 300 ₽/);
 
@@ -276,7 +289,7 @@ test('приложение: дать, вернуть, условия, напом
   const op = st.friends[0].ops[0];
   assert.deepEqual([op.amount, op.note, op.due - op.at, op.apr], [100000, 'кино', 14 * DAY, 6190]);
   assert.equal(out.length, 0); // из приложения владельцу в чат не пишем
-  assert.match(st.friends[0].link, /^https:\/\/t\.me\/dolg_bot\?start=f_tok1$/);
+  assert.match(st.friends[0].link, /^https:\/\/t\.me\/dolg_bot\?start=f_tok2$/);
 
   // тот же друг по имени, «до даты», без процентов
   st = await api(me, 'lend', { name: 'Петя', amount: 5000, terms: { until: '25.11' } });
@@ -294,8 +307,8 @@ test('приложение: дать, вернуть, условия, напом
   await assert.rejects(api(me, 'setTerms', { graceDays: 7, apr: 200000 }), ApiError);
 
   // напомнить без подключения → ссылка; после подключения — сообщение другу
-  assert.deepEqual(await api(me, 'nudge', { friendId: 1 }), { sent: false, link: 'https://t.me/dolg_bot?start=f_tok1' });
-  await say(petya, '/start f_tok1');
+  assert.deepEqual(await api(me, 'nudge', { friendId: 1 }), { sent: false, link: 'https://t.me/dolg_bot?start=f_tok2' });
+  await say(petya, '/start f_tok2');
   assert.deepEqual(await api(me, 'nudge', { friendId: 1 }), { sent: true });
   assert.match(out.find((x) => x.chatId === 2).text, /Маша напоминает: ты должен\(а\) <b>1 000 ₽/);
 
@@ -318,4 +331,71 @@ test('приложение: дать, вернуть, условия, напом
   st = await api(me, 'removeFriend', { friendId: 1 });
   assert.equal(st.friends.length, 0);
   await assert.rejects(api(me, 'nope'), /Неизвестное/);
+
+  // заявки в приложении: Петя (подключён) просит ещё, Маша видит и одобряет
+  assert.match(st.inviteLink, /^https:\/\/t\.me\/dolg_bot\?start=r_tok1$/);
+  st = await api(me, 'lend', { name: 'Петя', amount: 1000 });
+  await say(petya, '/start f_tok' + (st.friends[0].link.split('f_tok')[1]));
+  let pst2 = await api(petya, 'ask', { ownerId: 1, amount: 50000, note: 'кино', terms: { days: 7 } });
+  assert.deepEqual(pst2.myRequests.map((r) => [r.ownerName, r.amount]), [['Маша', 50000]]);
+  await assert.rejects(api(petya, 'ask', { ownerId: 1, amount: 100 }), /уже ждёт/);
+  await assert.rejects(api(user(3, 'Вася'), 'ask', { ownerId: 1, amount: 100 }), /ссылку для заявок/);
+  st = await api(me, 'state');
+  assert.equal(st.requests.length, 1);
+  assert.deepEqual([st.requests[0].name, st.requests[0].amount, st.requests[0].note, st.requests[0].terms], ['Петя', 50000, 'кино', { days: 7 }]);
+  st = await api(me, 'decide', { requestId: st.requests[0].id, approve: true });
+  assert.equal(st.requests.length, 0);
+  assert.equal(debtOf(st.friends.find((f) => f.linked).ops, clock.now).total, 51000);
+  await assert.rejects(api(me, 'decide', { requestId: 999, approve: true }), /Такой заявки нет/);
+});
+
+test('заявки: друг сам просит по ссылке, владелец одобряет или отказывает', async () => {
+  const { say, press, user, out, ops, friends } = setup();
+  const me = user(1, 'Маша');
+  const petya = { id: 2, first_name: 'Петя', username: 'petya' };
+  await say(me, 'Петя 300'); // в тетрадке уже есть другой Петя, не подключённый
+
+  const inv = (await say(me, '/invite'))[0];
+  const link = /https:\/\/t\.me\/dolg_bot\?start=r_(\w+)/.exec(inv.text);
+  assert.ok(link, inv.text);
+  assert.match((await say(me, `/start r_${link[1]}`))[0].text, /твоя ссылка для заявок/);
+
+  // друг открывает ссылку → бот спрашивает сумму с условиями владельца
+  assert.match((await say(petya, `/start r_${link[1]}`))[0].text, /тетрадка долгов Маша[\s\S]*до 55 дн\. без процентов, потом 61,9% годовых/);
+  assert.match((await say(petya, 'дай денег'))[0].text, /Напиши сумму/);
+  const sent = await say(petya, '1000 такси на 14 дней');
+  const ask = sent.find((x) => x.chatId === 1);
+  assert.match(ask.text, /Заявка<\/b>: Петя \(@petya\) просит в долг <b>1 000 ₽<\/b> \(такси\)\n⏳ без процентов до 23\.11/);
+  assert.deepEqual(buttons(ask.markup), [`rqok:${ask.markup.inline_keyboard[0][0].callback_data.split(':')[1]}`, `rqno:${ask.markup.inline_keyboard[0][0].callback_data.split(':')[1]}`]);
+  assert.match(sent.find((x) => x.chatId === 2).text, /Заявка на <b>1 000 ₽<\/b> отправлена Маша/);
+  // вторую, пока первая ждёт, — нельзя
+  await say(petya, `/start r_${link[1]}`);
+  assert.match((await say(petya, '500'))[0].text, /уже ждёт ответа/);
+  assert.match((await say(petya, '/mine'))[0].text, /⏳ Заявка Маша на 1 000 ₽ ждёт ответа/);
+
+  // чужой не может одобрить
+  const id = ask.markup.inline_keyboard[0][0].callback_data.split(':')[1];
+  assert.equal((await press(user(3, 'Вася'), `rqok:${id}`))[0].alert, true);
+
+  const ok = await press(me, `rqok:${id}`);
+  assert.match(ok.find((x) => x.type === 'edit' && x.chatId === 1).text, /✅ Одобрено: Петя 2 — <b>1 000 ₽<\/b> \(такси\)/);
+  assert.match(ok.find((x) => x.chatId === 2 && /одобрил/.test(x.text)).text, /Маша одобрил\(а\) заявку/);
+  assert.match(ok.find((x) => x.chatId === 2 && /записал/.test(x.text)).text, /ты взял\(а\) 1 000 ₽ \(такси\)/);
+  const newFriend = friends().find((f) => f.linkedUserId === 2);
+  assert.equal(newFriend.name, 'Петя 2'); // имя не совпало с другим Петей
+  const loan = ops().find((o) => o.friendId === newFriend.id);
+  assert.deepEqual([loan.amount, loan.due - loan.at, loan.apr], [100000, 14 * DAY, 6190]);
+  // повторное нажатие — уже ответили
+  assert.match((await press(me, `rqok:${id}`)).find((x) => x.type === 'answer').text, /уже ответили/);
+
+  // подключённый друг просит ещё — кнопкой из «я должен»; владелец отказывает
+  const mine = (await say(petya, '/mine'))[0];
+  assert.ok(buttons(mine.markup).includes('ask:1'));
+  await press(petya, 'ask:1');
+  const second = (await say(petya, '200')).find((x) => x.chatId === 1);
+  const id2 = second.markup.inline_keyboard[0][1].callback_data.split(':')[1];
+  assert.match(second.text, /Уже должен\(а\): 1 000 ₽/);
+  const no = await press(me, `rqno:${id2}`);
+  assert.match(no.find((x) => x.chatId === 2).text, /не одобрил\(а\) заявку на 200 ₽/);
+  assert.equal(ops().filter((o) => o.friendId === newFriend.id).length, 1);
 });

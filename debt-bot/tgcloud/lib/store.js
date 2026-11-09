@@ -2,7 +2,7 @@
 
 import { db } from 'sdk';
 import { and, asc, desc, eq } from 'sdk/db';
-import { friends, ops, users } from '../schema.js';
+import { friends, ops, requests, users } from '../schema.js';
 
 export const store = {
   getUser: (userId) => db.select().from(users).where(eq(users.userId, userId)).get(),
@@ -12,6 +12,10 @@ export const store = {
   },
   async setTerms(userId, { graceDays, apr }) {
     await db.update(users).set({ graceDays, apr }).where(eq(users.userId, userId)).run();
+  },
+  userByInvite: (token) => db.select().from(users).where(eq(users.inviteToken, token)).get(),
+  async setInvite(userId, token) {
+    await db.update(users).set({ inviteToken: token }).where(eq(users.userId, userId)).run();
   },
   async setPending(userId, pending) {
     await db.update(users).set({ pending }).where(eq(users.userId, userId)).run();
@@ -46,4 +50,22 @@ export const store = {
     if (last) await db.delete(ops).where(eq(ops.id, last.id)).run();
     return last ?? null;
   },
+
+  request: (id) => db.select().from(requests).where(eq(requests.id, id)).get(),
+  async addRequest(r) {
+    const [row] = await db.insert(requests).values(r).returning({ id: requests.id });
+    return row.id;
+  },
+  async setRequestMsg(id, ownerMsgId) {
+    await db.update(requests).set({ ownerMsgId }).where(eq(requests.id, id)).run();
+  },
+  /** Ответить на заявку, только если она ещё ждёт. true — ответили (двое не ответят дважды). */
+  async closeRequest(id, status) {
+    const res = await db.update(requests).set({ status })
+      .where(and(eq(requests.id, id), eq(requests.status, 'pending'))).run();
+    return res.rowsAffected > 0;
+  },
+  /** Ждущие ответа заявки: ко мне (ownerId) или мои (userId). */
+  pendingTo: (ownerId) => db.select().from(requests).where(and(eq(requests.ownerId, ownerId), eq(requests.status, 'pending'))).orderBy(asc(requests.id)).all(),
+  pendingFrom: (userId) => db.select().from(requests).where(and(eq(requests.userId, userId), eq(requests.status, 'pending'))).orderBy(asc(requests.id)).all(),
 };

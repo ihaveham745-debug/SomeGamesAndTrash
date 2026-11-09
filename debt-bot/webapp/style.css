@@ -285,3 +285,23 @@ main { padding: 4px 16px calc(96px + var(--safe-bottom)); }
 
 @keyframes fade { from { opacity: 0; } }
 @keyframes up { from { transform: translateY(100%); } }
+
+/* --- Заявки --- */
+
+.request .line { align-items: center; }
+.request .avatar { display: inline-grid; width: 28px; height: 28px; font-size: 13px; vertical-align: middle; margin-right: 4px; }
+.request .meta { margin: 6px 0 10px; }
+.request .btn { padding: 10px; font-size: 15px; }
+.row-btns .btn.secondary { padding: 10px; font-size: 15px; }
+
+.invite {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1.5px dashed var(--sep);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--link);
+  font-size: 15px;
+}

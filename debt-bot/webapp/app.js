@@ -98,16 +98,41 @@ function owedScreen() {
     </button>`;
   };
 
+  const requests = data.requests.length ? `<div class="section-title">Заявки</div><div class="list">${data.requests.map((r) => `
+      <div class="item request">
+        <div class="line"><span>${avatar(r.name)} <b>${esc(r.name)}</b> просит</span><b>${money(r.amount)}</b></div>
+        <div class="meta">${r.note ? `${esc(r.note)} · ` : ''}${esc(askTermsText(r.terms, data.terms))}${owesText(r)}</div>
+        <div class="row-btns"><button class="btn secondary" type="button" data-decide="${r.id}" data-approve="0">Отказать</button>
+          <button class="btn" type="button" data-decide="${r.id}" data-approve="1">Одобрить</button></div>
+      </div>`).join('')}</div>` : '';
+  const invite = '<button class="invite" type="button" data-action="invite">📨 Ссылка для заявок — пусть друзья просят сами</button>';
+
   app.innerHTML = all.length === 0
-    ? `<div class="empty"><div class="big">📒</div><b>Тетрадка пустая</b>Нажми «Дать в долг» — или напиши боту «Петя 500».</div>${bottomButton()}`
-    : `<section class="summary">
+    ? `${requests}<div class="empty"><div class="big">📒</div><b>Тетрадка пустая</b>Нажми «Дать в долг» — или дай друзьям ссылку для заявок.</div>${invite}${bottomButton()}`
+    : `${requests}<section class="summary">
         <div class="label">Тебе должны</div>
         <div class="total">${money(total)}</div>
         <div class="sub">${interest > 0 ? `из них проценты ${money(interest)}` : 'процентов пока нет'}${perDay > 0 ? ` · +${money(perDay)} в день` : ''}</div>
       </section>
       ${owing.length ? `<div class="list">${owing.map(row).join('')}</div>` : ''}
       ${closed.length ? `<div class="section-title">Вернули всё</div><div class="list">${closed.map(row).join('')}</div>` : ''}
+      ${invite}
       ${bottomButton()}`;
+}
+
+/** Условия, которые попросил друг: «на 14 дн.» / «до 25.11» / обычные. */
+function askTermsText(terms, base) {
+  if (terms?.free) return 'просит без процентов';
+  if (terms?.until) return `без % до ${terms.until}`;
+  const days = terms?.days ?? base.graceDays;
+  return base.apr > 0 ? `без % ${days} дн., потом ${ratePercent(base.apr)} годовых` : 'без процентов';
+}
+
+/** « · уже должен 300 ₽» — если друг подключён и должен. */
+function owesText(r) {
+  const f = r.friendId && data.friends.find((x) => x.id === r.friendId);
+  const total = f ? debtOf(f.ops, nowSec()).total : 0;
+  return total > 0 ? ` · уже должен ${money(total)}` : '';
 }
 
 const bottomButton = () => '<div class="bottom"><button class="btn" type="button" data-action="lend">＋ Дать в долг</button></div>';
@@ -153,22 +178,32 @@ function friendScreen() {
 
 function mineScreen() {
   const now = nowSec();
-  const rows = data.mine.map((m) => ({ ...m, d: debtOf(m.ops, now) })).filter((m) => m.d.total > 0);
-  const total = rows.reduce((s, m) => s + m.d.total, 0);
-  app.innerHTML = rows.length === 0
-    ? `<div class="empty"><div class="big">🙈</div><b>Ты никому не должен</b>Если друг ведёт здесь тетрадку и пришлёт тебе ссылку — твой долг появится тут.</div>`
-    : `<section class="summary mine"><div class="label">Ты должен</div><div class="total">${money(total)}</div>
-        <div class="sub">${rows.length} ${plural(rows.length, 'человеку', 'людям', 'людям')}</div></section>
-      <div class="list">${rows.map((m) => {
-        const st = statusOf(m.d, now);
-        return `<div class="row">
-          ${avatar(m.ownerName)}
-          <span class="main"><span class="name">${esc(m.ownerName)}</span>
-            <span class="status${st.warn ? ' warn' : ''}">${esc(st.text)}${m.d.interest ? ` · проценты ${money(m.d.interest)}` : ''}</span></span>
-          <span class="amount${st.warn ? ' warn' : ''}">${money(m.d.total)}</span>
-        </div>
-        <div class="item"><button class="btn secondary" type="button" data-paid="${m.friendId}">💸 Я вернул ${money(m.d.total)}</button></div>`;
-      }).join('')}</div>`;
+  const rows = data.mine.map((m) => ({ ...m, d: debtOf(m.ops, now) }));
+  const owing = rows.filter((m) => m.d.total > 0);
+  const total = owing.reduce((s, m) => s + m.d.total, 0);
+  const waiting = data.myRequests.length ? `<div class="section-title">Мои заявки</div><div class="list">${data.myRequests.map((r) => `
+    <div class="item"><div class="line"><span>⏳ ${esc(r.ownerName)}</span><b>${money(r.amount)}</b></div>
+      <div class="meta">${r.note ? `${esc(r.note)} · ` : ''}ждёт ответа</div></div>`).join('')}</div>` : '';
+  const card = (m) => {
+    const st = statusOf(m.d, now);
+    const asked = data.myRequests.some((r) => r.ownerId === m.ownerId);
+    return `<div class="row">
+        ${avatar(m.ownerName)}
+        <span class="main"><span class="name">${esc(m.ownerName)}</span>
+          <span class="status${st.warn ? ' warn' : ''}">${m.d.total > 0 ? `${esc(st.text)}${m.d.interest ? ` · проценты ${money(m.d.interest)}` : ''}` : 'ничего не должен'}</span></span>
+        <span class="amount${st.warn && m.d.total > 0 ? ' warn' : m.d.total > 0 ? '' : ' done'}">${m.d.total > 0 ? money(m.d.total) : '✓'}</span>
+      </div>
+      <div class="item row-btns">
+        ${m.d.total > 0 ? `<button class="btn secondary" type="button" data-paid="${m.friendId}">💸 Я вернул</button>` : ''}
+        ${asked ? '' : `<button class="btn secondary" type="button" data-ask="${m.ownerId}">🙋 Попросить</button>`}
+      </div>`;
+  };
+  app.innerHTML = rows.length === 0 && !waiting
+    ? `<div class="empty"><div class="big">🙈</div><b>Ты никому не должен</b>Чтобы попросить в долг, открой ссылку для заявок от друга, который ведёт здесь тетрадку.</div>`
+    : `${owing.length ? `<section class="summary mine"><div class="label">Ты должен</div><div class="total">${money(total)}</div>
+        <div class="sub">${owing.length} ${plural(owing.length, 'человеку', 'людям', 'людям')}</div></section>` : ''}
+      ${waiting}
+      ${rows.length ? `<div class="section-title">Тетрадки друзей</div><div class="list">${rows.map(card).join('')}</div>` : ''}`;
 }
 
 // --- Шторки ---
@@ -204,13 +239,16 @@ async function submit(form, action) {
   }
 }
 
-/** «Дать в долг»: имя (или друг из карточки), сумма, пометка, условия. */
-function lendSheet(friend = null) {
-  const t = data.terms;
+/**
+ * «Дать в долг»: имя (или друг из карточки), сумма, пометка, условия.
+ * ask — «Попросить в долг» у владельца тетрадки (запись из data.mine): та же шторка, но уходит заявка.
+ */
+function lendSheet(friend = null, ask = null) {
+  const t = ask ? ask.ownerTerms : data.terms;
   const known = data.friends.slice(0, 12);
   sheet(`
-    <h3>${friend ? `Ещё в долг: ${esc(friend.name)}` : 'Дать в долг'}</h3>
-    ${friend ? '' : `<label class="field"><span>Кому</span><input class="input" name="name" maxlength="40" placeholder="Имя"></label>
+    <h3>${ask ? `Попросить у ${esc(ask.ownerName)}` : friend ? `Ещё в долг: ${esc(friend.name)}` : 'Дать в долг'}</h3>
+    ${friend || ask ? '' : `<label class="field"><span>Кому</span><input class="input" name="name" maxlength="40" placeholder="Имя"></label>
       ${known.length ? `<div class="chips" style="margin:-4px 0 12px">${known.map((f) => `<button class="chip" type="button" data-name="${esc(f.name)}">${esc(f.name)}</button>`).join('')}</div>` : ''}`}
     <label class="field"><span>Сколько, ₽</span><input class="input amount" name="amount" inputmode="decimal" placeholder="0"></label>
     <label class="field"><span>За что (необязательно)</span><input class="input" name="note" maxlength="100" placeholder="пицца, такси…"></label>
@@ -219,13 +257,13 @@ function lendSheet(friend = null) {
         <button class="chip on" type="button" data-days="">${t.graceDays} дн. (обычно)</button>
         ${[7, 14, 30].filter((n) => n !== t.graceDays).map((n) => `<button class="chip" type="button" data-days="${n}">${n} дн.</button>`).join('')}
         <button class="chip" type="button" data-until>до даты</button>
-        <button class="chip" type="button" data-free>совсем без %</button>
+        ${ask ? '' : '<button class="chip" type="button" data-free>совсем без %</button>'}
       </div>
       <input class="input" type="date" name="until" style="display:none;margin-top:8px">
     </div>
     <div class="preview"></div>
     <div class="error" role="alert"></div>
-    <button class="btn" type="submit">Записать</button>`, (form) => {
+    <button class="btn" type="submit">${ask ? 'Отправить заявку' : 'Записать'}</button>`, (form) => {
     let choice = { kind: 'default' };
     const preview = form.querySelector('.preview');
     const update = () => {
@@ -254,12 +292,12 @@ function lendSheet(friend = null) {
     form.until.addEventListener('change', update);
     form.querySelectorAll('[data-name]').forEach((b) => b.addEventListener('click', () => { form.name.value = b.dataset.name; form.amount.focus(); }));
     update();
-    (friend ? form.amount : form.name).focus();
+    (friend || ask ? form.amount : form.name).focus();
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const amount = parseAmount(form.amount.value);
       const error = form.querySelector('.error');
-      if (!friend && !form.name.value.trim()) return void (error.textContent = 'Напиши, кому');
+      if (!friend && !ask && !form.name.value.trim()) return void (error.textContent = 'Напиши, кому');
       if (!amount) return void (error.textContent = 'Напиши сумму, например 500');
       let terms = null;
       if (choice.kind === 'free') terms = { free: true };
@@ -270,8 +308,13 @@ function lendSheet(friend = null) {
         terms = { until: `${d}.${m}` };
       }
       submit(form, async () => {
-        data = await call('lend', { ...(friend ? { friendId: friend.id } : { name: form.name.value }), amount, note: form.note.value, terms });
-        toast(`Записал: ${money(amount)}`);
+        if (ask) {
+          data = await call('ask', { ownerId: ask.ownerId, amount, note: form.note.value, terms });
+          toast(`📨 Заявка отправлена ${ask.ownerName}`);
+        } else {
+          data = await call('lend', { ...(friend ? { friendId: friend.id } : { name: form.name.value }), amount, note: form.note.value, terms });
+          toast(`Записал: ${money(amount)}`);
+        }
         render();
       });
     });
@@ -339,6 +382,7 @@ async function act(action) {
   const friend = data.friends.find((f) => f.id === openFriendId);
   if (action === 'lend') return lendSheet();
   if (action === 'terms') return termsSheet();
+  if (action === 'invite') return shareLink(data.inviteLink, 'Если нужно в долг — открой и напиши, сколько 🙂');
   if (!friend) return undefined;
   if (action === 'lend-more') return lendSheet(friend);
   if (action === 'repay') return repaySheet(friend);
@@ -373,8 +417,11 @@ async function act(action) {
 }
 
 function share(friend) {
-  const text = `Это моя тетрадка долгов — тут видно, сколько ты должен 🙂`;
-  const url = `https://t.me/share/url?url=${encodeURIComponent(friend.link)}&text=${encodeURIComponent(text)}`;
+  shareLink(friend.link, 'Это моя тетрадка долгов — тут видно, сколько ты должен 🙂');
+}
+
+function shareLink(link, text) {
+  const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
   if (tg?.openTelegramLink && tg.platform !== 'unknown') tg.openTelegramLink(url);
   else window.open(url, '_blank');
 }
@@ -388,6 +435,20 @@ app.addEventListener('click', async (e) => {
       openFriendId = Number(el.dataset.friend);
       render();
       window.scrollTo(0, 0);
+      return;
+    }
+    if (el.dataset.decide) {
+      const approve = el.dataset.approve === '1';
+      const r = data.requests.find((x) => x.id === Number(el.dataset.decide));
+      if (!approve && !(await confirmBox(`Отказать ${r?.name ?? ''}?`))) return;
+      el.disabled = true;
+      data = await call('decide', { requestId: Number(el.dataset.decide), approve });
+      toast(approve ? `✅ Одобрено — записал ${money(r?.amount ?? 0)}` : 'Отказано');
+      render();
+      return;
+    }
+    if (el.dataset.ask) {
+      lendSheet(null, data.mine.find((m) => m.ownerId === Number(el.dataset.ask)));
       return;
     }
     if (el.dataset.paid) {
