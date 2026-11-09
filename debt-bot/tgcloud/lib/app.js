@@ -12,7 +12,8 @@
 // если друг открыл свою ссылку, он «подключён»: видит свой долг, получает напоминания и может
 // нажать «я вернул» — владелец подтверждает.
 
-import { balanceOf, money, parseAmount, parseEntry, shortDate } from './money.js';
+import { DAY, DEFAULT_TERMS, MAX_GRACE_DAYS, MAX_RATE, debtOf, ratePercent } from './loans.js';
+import { money, parseAmount, parseEntry, shortDate, untilToUnix } from './money.js';
 
 export const BUTTONS = {
   list: '💰 Мне должны',
@@ -23,6 +24,7 @@ export const BUTTONS = {
 export const COMMANDS = [
   { command: 'list', description: '💰 Кто мне должен' },
   { command: 'mine', description: '🙈 Кому должен я' },
+  { command: 'terms', description: '⚙️ Условия: дней без процентов и % потом' },
   { command: 'help', description: '❓ Как пользоваться' },
 ];
 
@@ -44,7 +46,12 @@ export const HELP_TEXT = [
   '',
   'Вернули:',
   '<code>Петя вернул 200</code> или <code>Петя -200</code> — часть',
-  '<code>Петя вернул</code> — всё',
+  '<code>Петя вернул</code> — всё (вместе с процентами)',
+  '',
+  '⏳ <b>Беспроцентный период.</b> Сначала долг без процентов, потом на остаток капает процент в день.',
+  'Свои условия для всех новых займов — /terms. Для одного займа — прямо в записи:',
+  '<code>Петя 500 на 14 дней</code> · <code>Петя 500 до 25.11</code> · <code>Петя 500 без процентов</code>',
+  'Возврат гасит сначала проценты, потом сам долг — со старых займов.',
   '',
   `«${BUTTONS.list}» — список и итог. Нажми на друга: история, кнопки «вернул», «напомнить», «отменить».`,
   '',
@@ -61,6 +68,33 @@ export function userName(user) {
 const nameKey = (name) => name.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
 const cleanName = (name) => name.trim().replace(/\s+/g, ' ').replace(/^./, (c) => c.toUpperCase());
 const friendLink = (deps, f) => `https://t.me/${deps.botUsername}?start=f_${f.token}`;
+
+/** Долг друга сейчас (см. lib/loans.js). */
+const owed = async (deps, friendId) => debtOf(await deps.store.opsOf(friendId), deps.now());
+
+const userTerms = (me) => ({ graceDays: me?.graceDays ?? DEFAULT_TERMS.graceDays, rate: me?.rate ?? DEFAULT_TERMS.rate });
+
+/** Условия нового займа: из записи («на 14 дней», «до 25.11», «без процентов») или общие. */
+function loanTerms(me, terms, now) {
+  const base = userTerms(me);
+  const rate = terms?.free ? 0 : base.rate;
+  const until = terms?.until ? untilToUnix(terms.until, now) : null;
+  const due = until ?? now + (terms?.days ?? base.graceDays) * DAY;
+  return { due, rate };
+}
+
+/** «без процентов до 09.12, потом 1% в день» */
+const termsText = (due, rate) => (rate > 0 ? `без процентов до ${shortDate(due - 1)}, потом ${ratePercent(rate)} в день` : 'без процентов');
+
+/** «2 045 ₽ (в т.ч. проценты 45 ₽)» */
+const totalText = (d) => `${money(d.total)}${d.interest > 0 ? ` (в т.ч. проценты ${money(d.interest)})` : ''}`;
+
+/** Ближайший конец беспроцентного периода или «капает N ₽ в день». */
+function statusLine(d, now) {
+  if (d.perDay > 0) return `⚠️ беспроцентный период кончился — капает ${money(d.perDay)} в день`;
+  const next = d.loans.filter((l) => l.rate > 0 && l.left > 0 && l.due > now).sort((a, b) => a.due - b.due)[0];
+  return next ? `⏳ без процентов до ${shortDate(next.due - 1)}, потом ${ratePercent(next.rate)} в день` : '';
+}
 
 // --- Сообщения ---
 
@@ -89,6 +123,7 @@ export async function handleMessage(message, deps) {
     return deps.tg.send(chat.id, ...await listView(user.id, deps));
   }
   if (cmd === 'mine' || text === BUTTONS.mine) return deps.tg.send(chat.id, ...await mineView(user.id, deps));
+  if (cmd === 'terms') return termsCommand(chat.id, user.id, me, args, deps);
   if (cmd) return deps.tg.send(chat.id, HELP_TEXT, KEYBOARD);
 
   // Бот ждёт сумму (после кнопок «вернул часть» / «дал ещё»)
@@ -101,7 +136,7 @@ export async function handleMessage(message, deps) {
     if (amount !== null && friend?.ownerId === user.id) {
       await deps.store.setPending(user.id, null);
       const kind = pending.kind === 'part' ? 'return' : 'lend';
-      return record(chat.id, user, friend, kind, amount, kind === 'lend' ? parsed.note : '', deps);
+      return record(chat.id, user, friend, kind, amount, kind === 'lend' ? parsed.note : '', deps, kind === 'lend' ? loanTerms(me, parsed.terms, deps.now()) : null);
     }
     if (amount === null && /^[\d\s.,]+$/.test(text)) return deps.tg.send(chat.id, '🤔 Не понял сумму. Напиши числом, например <code>300</code>.');
     await deps.store.setPending(user.id, null); // написали что-то другое — забываем
@@ -119,29 +154,52 @@ export async function handleMessage(message, deps) {
   }
   let amount = entry.amount;
   if (amount === null) {
-    amount = balanceOf(await deps.store.opsOf(friend.id));
+    amount = (await owed(deps, friend.id)).total;
     if (amount <= 0) return deps.tg.send(chat.id, `✅ ${esc(friend.name)} тебе ничего не должен(а).`);
   }
-  return record(chat.id, user, friend, entry.kind, amount, entry.note, deps);
+  return record(chat.id, user, friend, entry.kind, amount, entry.note, deps, entry.kind === 'lend' ? loanTerms(me, entry.terms, deps.now()) : null);
+}
+
+async function termsCommand(chatId, userId, me, args, deps) {
+  const cur = userTerms(me);
+  const usage = [
+    `⚙️ <b>Условия новых займов</b>: ${cur.rate > 0 ? `${cur.graceDays} дн. без процентов, потом ${ratePercent(cur.rate)} в день` : 'без процентов'}`,
+    '',
+    'Поменять: <code>/terms 30 1</code> — 30 дней без процентов, потом 1% в день от остатка.',
+    '<code>/terms 14 0,5</code> — 14 дней, потом 0,5% · <code>/terms 0 0</code> — совсем без процентов.',
+    '',
+    'Старые займы остаются на своих условиях.',
+  ].join('\n');
+  if (!args) return deps.tg.send(chatId, usage);
+  const m = /^(\d{1,3})\s+(\d{1,2}(?:[.,]\d{1,2})?)\s*%?$/.exec(args);
+  const graceDays = m ? Number(m[1]) : NaN;
+  const rate = m ? Math.round(Number(m[2].replace(',', '.')) * 100) : NaN;
+  if (!m || graceDays > MAX_GRACE_DAYS || rate > MAX_RATE) {
+    return deps.tg.send(chatId, `🤔 Не понял. Дней — до ${MAX_GRACE_DAYS}, процент в день — до ${ratePercent(MAX_RATE)}.\n\n${usage}`);
+  }
+  await deps.store.setTerms(userId, { graceDays, rate });
+  return deps.tg.send(chatId, `✅ Новые займы: ${rate > 0 ? `${graceDays} дн. без процентов, потом ${ratePercent(rate)} в день` : 'без процентов'}.`);
 }
 
 /** Записать выдачу/возврат, ответить владельцу и сообщить подключённому другу. */
-async function record(chatId, owner, friend, kind, amount, note, deps) {
-  await deps.store.addOp({ ownerId: owner.id, friendId: friend.id, kind, amount, note: note || null, at: deps.now() });
-  const balance = balanceOf(await deps.store.opsOf(friend.id));
+async function record(chatId, owner, friend, kind, amount, note, deps, terms = null) {
+  await deps.store.addOp({ ownerId: owner.id, friendId: friend.id, kind, amount, note: note || null, at: deps.now(), ...terms });
+  const d = await owed(deps, friend.id);
+  const balance = d.total;
+  const loanTermsText = terms ? `\n⏳ ${termsText(terms.due, terms.rate)}` : '';
   const what = kind === 'lend'
-    ? `➕ Записал: ${esc(friend.name)} — ${money(amount)}${note ? ` (${esc(note)})` : ''}`
+    ? `➕ Записал: ${esc(friend.name)} — ${money(amount)}${note ? ` (${esc(note)})` : ''}${loanTermsText}`
     : `↩️ ${esc(friend.name)} вернул(а) ${money(amount)}`;
-  const total = balance > 0 ? `Всего должен(а): <b>${money(balance)}</b>` : balance < 0 ? `Переплата: ${money(-balance)} — теперь ты должен(а) ${esc(friend.name)}` : '🎉 Долг закрыт!';
+  const total = balance > 0 ? `Всего должен(а): <b>${totalText(d)}</b>` : balance < 0 ? `Переплата: ${money(-balance)} — теперь ты должен(а) ${esc(friend.name)}` : '🎉 Долг закрыт!';
   await deps.tg.send(chatId, `${what}\n${total}`, {
     inline_keyboard: [[{ text: `📒 ${friend.name}`, callback_data: `f:${friend.id}` }, { text: '↩️ Отменить', callback_data: `undo:${friend.id}` }]],
   });
   if (friend.linkedUserId) {
     const ownerName = esc(userName(owner));
     const msg = kind === 'lend'
-      ? `📒 ${ownerName} записал(а): ты взял(а) ${money(amount)}${note ? ` (${esc(note)})` : ''}.`
+      ? `📒 ${ownerName} записал(а): ты взял(а) ${money(amount)}${note ? ` (${esc(note)})` : ''}.${loanTermsText}`
       : `📒 ${ownerName} отметил(а): ты вернул(а) ${money(amount)}.`;
-    await deps.tg.send(friend.linkedUserId, `${msg}\n${balance > 0 ? `Ты должен(а): <b>${money(balance)}</b>` : '🎉 Ты ничего не должен(а).'}`);
+    await deps.tg.send(friend.linkedUserId, `${msg}\n${balance > 0 ? `Ты должен(а): <b>${totalText(d)}</b>` : '🎉 Ты ничего не должен(а).'}`);
   }
   return undefined;
 }
@@ -151,33 +209,45 @@ async function record(chatId, owner, friend, kind, amount, note, deps) {
 /** Список «мне должны» → [text, markup]. */
 export async function listView(ownerId, deps) {
   const [list, all] = await Promise.all([deps.store.friendsOf(ownerId), deps.store.opsOfOwner(ownerId)]);
-  const rows = list.map((f) => ({ f, balance: balanceOf(all.filter((o) => o.friendId === f.id)) }));
+  const rows = list.map((f) => {
+    const d = debtOf(all.filter((o) => o.friendId === f.id), deps.now());
+    return { f, d, balance: d.total };
+  });
   const owing = rows.filter((r) => r.balance !== 0).sort((a, b) => b.balance - a.balance);
   const closed = rows.filter((r) => r.balance === 0);
   if (rows.length === 0) return [`📒 Тетрадка пустая.\n\nДал в долг — напиши, например, <code>Петя 500</code>.`, KEYBOARD];
   const total = owing.reduce((s, r) => s + Math.max(r.balance, 0), 0);
+  const interest = owing.reduce((s, r) => s + r.d.interest, 0);
   const text = [
-    owing.length ? `💰 <b>Тебе должны: ${money(total)}</b>` : '🎉 <b>Тебе никто не должен</b>',
+    owing.length ? `💰 <b>Тебе должны: ${money(total)}</b>${interest > 0 ? `\n<i>из них проценты: ${money(interest)}</i>` : ''}` : '🎉 <b>Тебе никто не должен</b>',
     '',
-    ...owing.map((r) => (r.balance > 0 ? `• ${esc(r.f.name)} — ${money(r.balance)}` : `• ${esc(r.f.name)} — ты должен(а) ${money(-r.balance)}`)),
+    ...owing.map((r) => (r.balance > 0
+      ? `• ${esc(r.f.name)} — ${money(r.balance)}${r.d.perDay > 0 ? ` ⚠️ +${money(r.d.perDay)}/день` : ''}`
+      : `• ${esc(r.f.name)} — ты должен(а) ${money(-r.balance)}`)),
     ...(closed.length ? ['', `<i>Вернули всё: ${closed.map((r) => esc(r.f.name)).join(', ')}</i>`] : []),
   ].join('\n');
   const buttons = [...owing, ...closed].map((r) => [{ text: `${r.f.name}${r.balance ? ` · ${money(r.balance)}` : ' ✓'}`, callback_data: `f:${r.f.id}` }]);
+  buttons.push([{ text: '⚙️ Условия займов', callback_data: 'terms' }]);
   return [text, { inline_keyboard: buttons }];
 }
 
 /** Карточка друга → [text, markup]. */
 export async function friendView(friend, deps) {
   const list = await deps.store.opsOf(friend.id);
-  const balance = balanceOf(list);
+  const now = deps.now();
+  const d = debtOf(list, now);
+  const balance = d.total;
   const history = list.slice(-12).map((o) => `${shortDate(o.at)} ${o.kind === 'lend' ? '➕' : '↩️'} ${money(o.amount)}${o.note ? ` · ${esc(o.note)}` : ''}`);
+  const loans = balance > 0 ? d.loans.map((l) => `• ${money(l.left)} от ${shortDate(l.at)}${l.note ? ` (${esc(l.note)})` : ''} — ${loanState(l, now)}`) : [];
   const text = [
     `📒 <b>${esc(friend.name)}</b>`,
-    balance > 0 ? `Должен(а): <b>${money(balance)}</b>` : balance < 0 ? `Переплата: ${money(-balance)}` : '🎉 Ничего не должен(а)',
+    balance > 0 ? `Должен(а): <b>${totalText(d)}</b>` : balance < 0 ? `Переплата: ${money(-balance)}` : '🎉 Ничего не должен(а)',
+    balance > 0 ? statusLine(d, now) : '',
     friend.linkedUserId ? '🔗 подключён(а) — видит долг и получает напоминания' : '',
+    ...(loans.length ? ['', '<i>займы:</i>', ...loans] : []),
     '',
     ...(history.length ? [list.length > 12 ? '<i>последние записи:</i>' : '<i>история:</i>', ...history] : ['<i>записей нет</i>']),
-  ].filter((l, i) => l !== '' || i > 2).join('\n');
+  ].filter((l, i) => l !== '' || i > 3).join('\n');
   const id = friend.id;
   const rows = [];
   if (balance > 0) rows.push([{ text: '✅ Вернул(а) всё', callback_data: `all:${id}` }, { text: '↩️ Вернул(а) часть', callback_data: `part:${id}` }]);
@@ -187,18 +257,29 @@ export async function friendView(friend, deps) {
   return [text, { inline_keyboard: rows }];
 }
 
+/** Состояние займа: «без % до 09.12» / «просрочен с 09.12, набежало 45 ₽». */
+function loanState(l, now) {
+  if (l.rate === 0) return 'без процентов';
+  if (now <= l.due) return `без % до ${shortDate(l.due - 1)}, потом ${ratePercent(l.rate)}/день`;
+  return `${ratePercent(l.rate)}/день с ${shortDate(l.due)}${l.interest > 0 ? `, набежало ${money(l.interest)}` : ''}`;
+}
+
 /** «Я должен» — долги, где я подключённый друг → [text, markup]. */
 export async function mineView(userId, deps) {
   const links = await deps.store.linkedTo(userId);
   const rows = [];
   for (const f of links) {
-    const balance = balanceOf(await deps.store.opsOf(f.id));
-    if (balance <= 0) continue;
+    const d = await owed(deps, f.id);
+    if (d.total <= 0) continue;
     const owner = await deps.store.getUser(f.ownerId);
-    rows.push({ f, balance, ownerName: owner?.name ?? 'кто-то' });
+    rows.push({ f, d, balance: d.total, ownerName: owner?.name ?? 'кто-то' });
   }
   if (rows.length === 0) return ['🙈 Ты никому не должен(а) — по крайней мере, в этом боте.', KEYBOARD];
-  const text = ['🙈 <b>Ты должен(а)</b>', '', ...rows.map((r) => `• ${esc(r.ownerName)} — ${money(r.balance)}`)].join('\n');
+  const now = deps.now();
+  const text = ['🙈 <b>Ты должен(а)</b>', '', ...rows.map((r) => {
+    const status = statusLine(r.d, now);
+    return `• ${esc(r.ownerName)} — ${totalText(r.d)}${status ? `\n   ${status}` : ''}`;
+  })].join('\n');
   return [text, { inline_keyboard: rows.map((r) => [{ text: `💸 Я вернул(а) ${r.ownerName} ${money(r.balance)}`, callback_data: `paid:${r.f.id}` }]) }];
 }
 
@@ -212,7 +293,7 @@ async function linkFriend(chatId, user, token, deps) {
   const isNew = !friend.linkedUserId;
   await deps.store.linkFriend(friend.id, user.id);
   const owner = await deps.store.getUser(friend.ownerId);
-  const balance = balanceOf(await deps.store.opsOf(friend.id));
+  const balance = (await owed(deps, friend.id)).total;
   if (isNew) {
     await deps.tg.send(friend.ownerId, `🔗 ${esc(friend.name)} подключился(ась) — теперь видит свой долг и получает напоминания.`);
   }
@@ -234,6 +315,10 @@ export async function handleCallback(query, deps) {
   if (action === 'home') {
     await answer();
     return edit(...await listView(user.id, deps));
+  }
+  if (action === 'terms') {
+    await answer();
+    return termsCommand(chatId, user.id, await deps.store.getUser(user.id), '', deps);
   }
   const friend = await deps.store.friend(Number(arg));
   if (!friend) {
@@ -266,7 +351,7 @@ export async function handleCallback(query, deps) {
     return edit(...await friendView(friend, deps));
   }
   if (action === 'all') {
-    const balance = balanceOf(await deps.store.opsOf(id));
+    const balance = (await owed(deps, id)).total;
     if (balance <= 0) return answer('Долга уже нет');
     await answer('Записал');
     await record(chatId, user, friend, 'return', balance, '', deps);
@@ -284,7 +369,7 @@ export async function handleCallback(query, deps) {
     if (!last) return answer('Отменять нечего', true);
     await answer(`Отменил: ${last.kind === 'lend' ? '➕' : '↩️'} ${money(last.amount)}`);
     if (friend.linkedUserId) {
-      await deps.tg.send(friend.linkedUserId, `📒 ${esc(userName(user))} отменил(а) запись ${last.kind === 'lend' ? '➕' : '↩️'} ${money(last.amount)}. Ты должен(а): <b>${money(Math.max(balanceOf(await deps.store.opsOf(id)), 0))}</b>`);
+      await deps.tg.send(friend.linkedUserId, `📒 ${esc(userName(user))} отменил(а) запись ${last.kind === 'lend' ? '➕' : '↩️'} ${money(last.amount)}. Ты должен(а): <b>${money(Math.max((await owed(deps, id)).total, 0))}</b>`);
     }
     return edit(...await friendView(friend, deps));
   }
@@ -293,13 +378,15 @@ export async function handleCallback(query, deps) {
     return deps.tg.send(chatId, `🔗 Ссылка для ${esc(friend.name)} — перешли её:\n${friendLink(deps, friend)}\n\nОткрыв её, ${esc(friend.name)} увидит свой долг, будет получать напоминания и сможет нажать «я вернул».`);
   }
   if (action === 'nudge') {
-    const balance = balanceOf(await deps.store.opsOf(id));
+    const balance = (await owed(deps, id)).total;
     if (balance <= 0) return answer(`${friend.name} ничего не должен(а)`, true);
     if (!friend.linkedUserId) {
       await answer();
       return deps.tg.send(chatId, `🔔 ${esc(friend.name)} ещё не подключён(а) к боту — напомнить сам я не могу. Перешли ему/ей ссылку, и дальше напоминания будут приходить:\n${friendLink(deps, friend)}\n\nИли просто перешли это:\n<i>Привет! Напоминаю про долг ${money(balance)} 🙂</i>`);
     }
-    await deps.tg.send(friend.linkedUserId, `🔔 ${esc(userName(user))} напоминает: ты должен(а) <b>${money(balance)}</b>.`, {
+    const d = await owed(deps, id);
+    const status = statusLine(d, deps.now());
+    await deps.tg.send(friend.linkedUserId, `🔔 ${esc(userName(user))} напоминает: ты должен(а) <b>${totalText(d)}</b>.${status ? `\n${status}` : ''}`, {
       inline_keyboard: [[{ text: `💸 Я вернул(а) ${money(balance)}`, callback_data: `paid:${id}` }]],
     });
     return answer(`Напомнил ${friend.name}`);
@@ -321,7 +408,7 @@ export async function handleCallback(query, deps) {
 /** Друг нажал «я вернул» — спрашиваем владельца. */
 async function paidAction(friend, user, answer, edit, deps) {
   if (friend.linkedUserId !== user.id) return answer('Это не твой долг', true);
-  const balance = balanceOf(await deps.store.opsOf(friend.id));
+  const balance = (await owed(deps, friend.id)).total;
   if (balance <= 0) return answer('Ты уже ничего не должен(а) 🎉', true);
   await deps.tg.send(friend.ownerId, `💸 ${esc(friend.name)} говорит, что вернул(а) <b>${money(balance)}</b>. Подтвердить?`, {
     inline_keyboard: [[

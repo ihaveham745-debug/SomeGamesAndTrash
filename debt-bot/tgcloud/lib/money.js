@@ -37,6 +37,7 @@ const AMOUNT_WORD = /^\d[\d.,]*(к|k|тыс\.?)?(р\.?|руб\.?|₽)?$/i;
  *   'Петя Иванов 1 500 кино' → { kind: 'lend', name: 'Петя Иванов', amount: 150000, note: 'кино' }
  *   'Петя -200' / 'Петя вернул 200' → { kind: 'return', name: 'Петя', amount: 20000 }
  *   'Петя вернул'           → { kind: 'return', name: 'Петя', amount: null } — всё
+ * У займа можно указать свои условия (см. parseTerms): 'Петя 500 кино на 14 дней' → terms: { days: 14 }.
  * Не запись — null.
  */
 export function parseEntry(text) {
@@ -67,8 +68,53 @@ export function parseEntry(text) {
   if (amountText && amount === null) return null;
   if (amount === null && kind === 'lend') return null;
   if (!name || name.length > 40) return null;
-  return { kind, name, amount, note: words.slice(next).join(' ').slice(0, 100) };
+  const { terms, rest } = parseTerms(words.slice(next));
+  return { kind, name, amount, note: rest.join(' ').slice(0, 100), ...(terms && kind === 'lend' && { terms }) };
 }
 
-/** Сколько друг должен: выдано минус возвращено. */
-export const balanceOf = (ops) => ops.reduce((sum, o) => sum + (o.kind === 'lend' ? o.amount : -o.amount), 0);
+const DAYS_UNIT = [
+  [/^(дн(я|ей|ь)?|д\.?|сут(ок|ки)?)$/i, 1],
+  [/^недел(я|ю|и|ь)$/i, 7],
+  [/^месяц(а|ев)?$/i, 30],
+];
+
+/**
+ * Условия займа в конце записи, остальное — пометка:
+ *   'на 14 дней' / 'на неделю' / 'на 2 месяца' → { days: 14 | 7 | 60 };
+ *   'до 25.11' → { until: '25.11' };
+ *   'без процентов' / 'без %' → { free: true }.
+ */
+export function parseTerms(words) {
+  const rest = [];
+  let terms = null;
+  const add = (t) => { terms = { ...terms, ...t }; };
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i].toLowerCase();
+    const n = words[i + 1]?.toLowerCase();
+    if (w === 'на' && n) {
+      const unit = DAYS_UNIT.find(([re]) => re.test(n));
+      if (unit) { add({ days: unit[1] }); i += 1; continue; }
+      const count = /^\d{1,3}$/.test(n) ? Number(n) : null;
+      const unit2 = count && DAYS_UNIT.find(([re]) => re.test(words[i + 2] ?? ''));
+      if (unit2) { add({ days: count * unit2[1] }); i += 2; continue; }
+    }
+    if (w === 'до' && /^\d{1,2}\.\d{1,2}$/.test(n ?? '')) { add({ until: n }); i += 1; continue; }
+    if (w === 'без' && /^(процентов|%|процента)$/.test(n ?? '')) { add({ free: true }); i += 1; continue; }
+    rest.push(words[i]);
+  }
+  return { terms, rest };
+}
+
+/** '25.11' → unix-секунды конца этого дня по якутскому времени (ближайшая такая дата, не в прошлом); null — не дата. */
+export function untilToUnix(ddmm, now) {
+  const m = /^(\d{1,2})\.(\d{1,2})$/.exec(ddmm ?? '');
+  if (!m) return null;
+  const local = new Date((now + UTC_OFFSET_HOURS * 3600) * 1000);
+  for (const year of [local.getUTCFullYear(), local.getUTCFullYear() + 1]) {
+    const endUtc = Date.UTC(year, Number(m[2]) - 1, Number(m[1]) + 1) / 1000 - UTC_OFFSET_HOURS * 3600;
+    const check = new Date(Date.UTC(year, Number(m[2]) - 1, Number(m[1])));
+    if (check.getUTCDate() !== Number(m[1]) || check.getUTCMonth() !== Number(m[2]) - 1) return null;
+    if (endUtc > now) return endUtc;
+  }
+  return null;
+}
