@@ -1,0 +1,4 @@
+{
+  // Mini App нет — только бот.
+  "$schema": "./node_modules/@tgcloud/cli/schema/tgcloud.json"
+}
