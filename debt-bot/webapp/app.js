@@ -1,7 +1,7 @@
 // Mini App «Тетрадка долгов». Данные — через эндпоинты (tgcloud/endpoints/*.js → lib/api.js),
 // долг с процентами считаем тем же lib/loans.js, что и бот (при сборке копируется в dist/lib/).
 
-import { DAY, debtOf, ratePercent } from './lib/loans.js';
+import { DAY, debtOf, ratePercent, rateText } from './lib/loans.js';
 import { money, parseAmount, shortDate } from './lib/money.js';
 
 const tg = window.Telegram?.WebApp;
@@ -51,7 +51,7 @@ function avatar(name) {
 function statusOf(d, now) {
   if (d.total <= 0) return { text: d.total < 0 ? `переплата ${money(-d.total)}` : 'вернул(а) всё', warn: false };
   if (d.perDay > 0) return { text: `капает ${money(d.perDay)} в день`, warn: true };
-  const next = d.loans.filter((l) => l.rate > 0 && l.left > 0 && l.due > now).sort((a, b) => a.due - b.due)[0];
+  const next = d.loans.filter((l) => (l.apr || l.rate) && l.left > 0 && l.due > now).sort((a, b) => a.due - b.due)[0];
   if (!next) return { text: 'без процентов', warn: false };
   const days = Math.ceil((next.due - now) / DAY);
   return { text: `без % ещё ${days} ${plural(days, 'день', 'дня', 'дней')} · до ${shortDate(next.due - 1)}`, warn: days <= 3 };
@@ -118,10 +118,10 @@ function friendScreen() {
   const d = f.d;
   const st = statusOf(d, now);
   const loans = d.total > 0 ? d.loans.map((l) => {
-    const overdue = l.rate > 0 && now > l.due;
-    const meta = l.rate === 0 ? 'без процентов'
-      : overdue ? `${ratePercent(l.rate)} в день с ${shortDate(l.due)}${l.interest ? ` · набежало ${money(l.interest)}` : ''}`
-        : `без % до ${shortDate(l.due - 1)}, потом ${ratePercent(l.rate)} в день`;
+    const overdue = l.overdue;
+    const meta = !l.apr && !l.rate ? 'без процентов'
+      : overdue ? `${rateText(l)} с ${shortDate(l.apr != null ? l.at : l.due)}${l.interest ? ` · набежало ${money(l.interest)}` : ''}`
+        : `без % до ${shortDate(l.due - 1)}${l.risk ? ` · не вернёт всё — набежит ${money(l.risk)}` : `, потом ${rateText(l)}`}`;
     return `<div class="item"><div class="line"><span>${money(l.left)}${l.left !== l.amount ? ` <span class="meta">из ${money(l.amount)}</span>` : ''}</span><span class="meta">от ${shortDate(l.at)}</span></div>
       <div class="meta${overdue ? ' warn' : ''}">${l.note ? `${esc(l.note)} · ` : ''}${esc(meta)}</div></div>`;
   }).join('') : '';
@@ -231,12 +231,12 @@ function lendSheet(friend = null) {
     const update = () => {
       const now = nowSec();
       let text;
-      if (choice.kind === 'free' || t.rate === 0) text = 'без процентов';
+      if (choice.kind === 'free' || t.apr === 0) text = 'без процентов';
       else {
         const due = choice.kind === 'until' && form.until.value
           ? Date.parse(`${form.until.value}T00:00:00+09:00`) / 1000 + DAY
           : now + (choice.kind === 'days' ? choice.days : t.graceDays) * DAY;
-        text = `без процентов до ${shortDate(due - 1)}, потом ${ratePercent(t.rate)} в день от остатка`;
+        text = `без процентов до ${shortDate(due - 1)}; не вернёт всё к этому дню — ${ratePercent(t.apr)} годовых за весь срок`;
       }
       preview.textContent = `⏳ ${text}`;
     };
@@ -305,17 +305,19 @@ function termsSheet() {
   sheet(`
     <h3>Условия займов</h3>
     <label class="field"><span>Дней без процентов</span><input class="input" name="days" inputmode="numeric" value="${t.graceDays}"></label>
-    <label class="field"><span>Потом процентов в день от остатка</span><input class="input" name="rate" inputmode="decimal" value="${String(t.rate / 100).replace('.', ',')}"></label>
+    <label class="field"><span>Процентов годовых, если не вернул всё вовремя</span><input class="input" name="apr" inputmode="decimal" value="${String(t.apr / 100).replace('.', ',')}"></label>
     <div class="preview"></div>
     <div class="error" role="alert"></div>
     <button class="btn" type="submit">Сохранить</button>
-    <p class="hint-text">Для новых займов. Старые остаются на своих условиях. 0 — без процентов вообще.</p>`, (form) => {
+    <p class="hint-text">Как у кредитки: вернул займ целиком до конца периода — 0%. Не вернул — проценты за весь срок с первого дня и дальше, пока не вернёт. Для новых займов; старые остаются на своих условиях. 0 — без процентов вообще.</p>`, (form) => {
     const preview = form.querySelector('.preview');
-    const read = () => ({ graceDays: Number(form.days.value), rate: Math.round(Number(form.rate.value.replace(',', '.')) * 100) });
+    const read = () => ({ graceDays: Number(form.days.value), apr: Math.round(Number(form.apr.value.replace(',', '.')) * 100) });
     const update = () => {
-      const { graceDays, rate } = read();
-      preview.textContent = Number.isFinite(rate) && rate > 0 && Number.isInteger(graceDays)
-        ? `1 000 ₽ на ${graceDays + 10} дн. → вернуть ${money(100000 + Math.round(100000 * rate / 10000 * 10))}`
+      const { graceDays, apr } = read();
+      // пример: 1000 ₽ вернули через 10 дней после конца льготного периода — проценты за весь срок
+      const days = graceDays + 10;
+      preview.textContent = Number.isFinite(apr) && apr > 0 && Number.isInteger(graceDays)
+        ? `1 000 ₽: вернул за ${graceDays} дн. — 1 000 ₽; через ${days} дн. — ${money(100000 + Math.round(100000 * apr / 10000 / 365 * days))}`
         : '';
     };
     form.addEventListener('input', update);

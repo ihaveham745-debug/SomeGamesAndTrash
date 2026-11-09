@@ -6,12 +6,12 @@
 // Долг и проценты приложение считает само тем же lib/loans.js — по записям ops.
 
 import { askPaid, cleanName, friendLink, loanTerms, nameKey, nudgeFriend, owed, record, userName, userTerms } from './app.js';
-import { MAX_GRACE_DAYS, MAX_RATE } from './loans.js';
+import { MAX_APR, MAX_GRACE_DAYS } from './loans.js';
 import { MAX_AMOUNT, untilToUnix } from './money.js';
 
 export class ApiError extends Error {}
 
-const OP_FIELDS = ({ id, kind, amount, note, at, due, rate }) => ({ id, kind, amount, note, at, due, rate });
+const OP_FIELDS = ({ id, kind, amount, note, at, due, rate, apr }) => ({ id, kind, amount, note, at, due, rate, apr });
 
 /** Всё для приложения: мои условия, мои друзья с записями и мои долги другим. */
 export async function state(userId, deps) {
@@ -108,10 +108,10 @@ export async function apiCall(name, input, user, deps) {
 
     case 'setTerms': {
       const graceDays = Number(input.graceDays);
-      const rate = Math.round(Number(input.rate));
+      const apr = Math.round(Number(input.apr));
       if (!Number.isInteger(graceDays) || graceDays < 0 || graceDays > MAX_GRACE_DAYS) throw new ApiError(`Дней без процентов — от 0 до ${MAX_GRACE_DAYS}`);
-      if (!Number.isInteger(rate) || rate < 0 || rate > MAX_RATE) throw new ApiError('Процент в день — от 0 до 10');
-      await deps.store.setTerms(id, { graceDays, rate });
+      if (!Number.isInteger(apr) || apr < 0 || apr > MAX_APR) throw new ApiError('Процент годовых — от 0 до 1000');
+      await deps.store.setTerms(id, { graceDays, apr });
       break;
     }
 

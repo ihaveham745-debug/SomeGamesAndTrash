@@ -12,7 +12,7 @@
 // если друг открыл свою ссылку, он «подключён»: видит свой долг, получает напоминания и может
 // нажать «я вернул» — владелец подтверждает.
 
-import { DAY, DEFAULT_TERMS, MAX_GRACE_DAYS, MAX_RATE, debtOf, ratePercent } from './loans.js';
+import { DAY, DEFAULT_TERMS, MAX_APR, MAX_GRACE_DAYS, debtOf, ratePercent, rateText } from './loans.js';
 import { money, parseAmount, parseEntry, shortDate, untilToUnix } from './money.js';
 
 export const BUTTONS = {
@@ -48,7 +48,8 @@ export const HELP_TEXT = [
   '<code>Петя вернул 200</code> или <code>Петя -200</code> — часть',
   '<code>Петя вернул</code> — всё (вместе с процентами)',
   '',
-  '⏳ <b>Беспроцентный период.</b> Сначала долг без процентов, потом на остаток капает процент в день.',
+  '⏳ <b>Беспроцентный период — как у кредитки.</b> Вернул займ целиком до конца периода — процентов нет.',
+  'Не вернул — проценты (годовые) за весь срок с первого дня, и дальше капают, пока не вернёт.',
   'Свои условия для всех новых займов — /terms. Для одного займа — прямо в записи:',
   '<code>Петя 500 на 14 дней</code> · <code>Петя 500 до 25.11</code> · <code>Петя 500 без процентов</code>',
   'Возврат гасит сначала проценты, потом сам долг — со старых займов.',
@@ -72,19 +73,24 @@ export const friendLink = (deps, f) => `https://t.me/${deps.botUsername}?start=f
 /** Долг друга сейчас (см. lib/loans.js). */
 export const owed = async (deps, friendId) => debtOf(await deps.store.opsOf(friendId), deps.now());
 
-export const userTerms = (me) => ({ graceDays: me?.graceDays ?? DEFAULT_TERMS.graceDays, rate: me?.rate ?? DEFAULT_TERMS.rate });
+export const userTerms = (me) => ({ graceDays: me?.graceDays ?? DEFAULT_TERMS.graceDays, apr: me?.apr ?? DEFAULT_TERMS.apr });
 
 /** Условия нового займа: из записи («на 14 дней», «до 25.11», «без процентов») или общие. */
 export function loanTerms(me, terms, now) {
   const base = userTerms(me);
-  const rate = terms?.free ? 0 : base.rate;
+  const apr = terms?.free ? 0 : base.apr;
   const until = terms?.until ? untilToUnix(terms.until, now) : null;
   const due = until ?? now + (terms?.days ?? base.graceDays) * DAY;
-  return { due, rate };
+  return { due, apr };
 }
 
-/** «без процентов до 09.12, потом 1% в день» */
-const termsText = (due, rate) => (rate > 0 ? `без процентов до ${shortDate(due - 1)}, потом ${ratePercent(rate)} в день` : 'без процентов');
+/** «без процентов до 09.12; не вернёт всё к этому дню — 61,9% годовых за весь срок» */
+const termsText = (due, apr) => (apr > 0
+  ? `без процентов до ${shortDate(due - 1)}; не вернёт всё к этому дню — ${ratePercent(apr)} годовых за весь срок`
+  : 'без процентов');
+
+/** «61,9% годовых, 55 дн. без процентов» — условия новых займов. */
+const userTermsText = (t) => (t.apr > 0 ? `до ${t.graceDays} дн. без процентов, потом ${ratePercent(t.apr)} годовых за весь срок` : 'без процентов');
 
 /** «2 045 ₽ (в т.ч. проценты 45 ₽)» */
 const totalText = (d) => `${money(d.total)}${d.interest > 0 ? ` (в т.ч. проценты ${money(d.interest)})` : ''}`;
@@ -92,8 +98,9 @@ const totalText = (d) => `${money(d.total)}${d.interest > 0 ? ` (в т.ч. пр�
 /** Ближайший конец беспроцентного периода или «капает N ₽ в день». */
 function statusLine(d, now) {
   if (d.perDay > 0) return `⚠️ беспроцентный период кончился — капает ${money(d.perDay)} в день`;
-  const next = d.loans.filter((l) => l.rate > 0 && l.left > 0 && l.due > now).sort((a, b) => a.due - b.due)[0];
-  return next ? `⏳ без процентов до ${shortDate(next.due - 1)}, потом ${ratePercent(next.rate)} в день` : '';
+  const next = d.loans.filter((l) => (l.apr || l.rate) && l.left > 0 && l.due > now).sort((a, b) => a.due - b.due)[0];
+  if (!next) return '';
+  return `⏳ без процентов до ${shortDate(next.due - 1)}${next.risk ? ` — не вернёт всё к этому дню, набежит ${money(next.risk)} (${rateText(next)})` : `, потом ${rateText(next)}`}`;
 }
 
 // --- Сообщения ---
@@ -166,22 +173,22 @@ export async function handleMessage(message, deps) {
 async function termsCommand(chatId, userId, me, args, deps) {
   const cur = userTerms(me);
   const usage = [
-    `⚙️ <b>Условия новых займов</b>: ${cur.rate > 0 ? `${cur.graceDays} дн. без процентов, потом ${ratePercent(cur.rate)} в день` : 'без процентов'}`,
+    `⚙️ <b>Условия новых займов</b>: ${userTermsText(cur)}`,
     '',
-    'Поменять: <code>/terms 30 1</code> — 30 дней без процентов, потом 1% в день от остатка.',
-    '<code>/terms 14 0,5</code> — 14 дней, потом 0,5% · <code>/terms 0 0</code> — совсем без процентов.',
+    'Поменять: <code>/terms 55 61,9</code> — 55 дней без процентов, не вернул всё — 61,9% годовых за весь срок.',
+    '<code>/terms 30 25</code> — 30 дней, 25% годовых · <code>/terms 0 0</code> — совсем без процентов.',
     '',
     'Старые займы остаются на своих условиях.',
   ].join('\n');
   if (!args) return deps.tg.send(chatId, usage);
   const m = /^(\d{1,3})\s+(\d{1,2}(?:[.,]\d{1,2})?)\s*%?$/.exec(args);
   const graceDays = m ? Number(m[1]) : NaN;
-  const rate = m ? Math.round(Number(m[2].replace(',', '.')) * 100) : NaN;
-  if (!m || graceDays > MAX_GRACE_DAYS || rate > MAX_RATE) {
-    return deps.tg.send(chatId, `🤔 Не понял. Дней — до ${MAX_GRACE_DAYS}, процент в день — до ${ratePercent(MAX_RATE)}.\n\n${usage}`);
+  const apr = m ? Math.round(Number(m[2].replace(',', '.')) * 100) : NaN;
+  if (!m || graceDays > MAX_GRACE_DAYS || apr > MAX_APR) {
+    return deps.tg.send(chatId, `🤔 Не понял. Дней — до ${MAX_GRACE_DAYS}, процент годовых — до ${ratePercent(MAX_APR)}.\n\n${usage}`);
   }
-  await deps.store.setTerms(userId, { graceDays, rate });
-  return deps.tg.send(chatId, `✅ Новые займы: ${rate > 0 ? `${graceDays} дн. без процентов, потом ${ratePercent(rate)} в день` : 'без процентов'}.`);
+  await deps.store.setTerms(userId, { graceDays, apr });
+  return deps.tg.send(chatId, `✅ Новые займы: ${userTermsText({ graceDays, apr })}.`);
 }
 
 /** Записать выдачу/возврат, ответить владельцу и сообщить подключённому другу. */
@@ -190,7 +197,7 @@ export async function record(chatId, owner, friend, kind, amount, note, deps, te
   await deps.store.addOp({ ownerId: owner.id, friendId: friend.id, kind, amount, note: note || null, at: deps.now(), ...terms });
   const d = await owed(deps, friend.id);
   const balance = d.total;
-  const loanTermsText = terms ? `\n⏳ ${termsText(terms.due, terms.rate)}` : '';
+  const loanTermsText = terms ? `\n⏳ ${termsText(terms.due, terms.apr)}` : '';
   const what = kind === 'lend'
     ? `➕ Записал: ${esc(friend.name)} — ${money(amount)}${note ? ` (${esc(note)})` : ''}${loanTermsText}`
     : `↩️ ${esc(friend.name)} вернул(а) ${money(amount)}`;
@@ -263,11 +270,11 @@ export async function friendView(friend, deps) {
   return [text, { inline_keyboard: rows }];
 }
 
-/** Состояние займа: «без % до 09.12» / «просрочен с 09.12, набежало 45 ₽». */
+/** Состояние займа: «без % до 09.12, иначе набежит 45 ₽» / «61,9% годовых, набежало 45 ₽». */
 function loanState(l, now) {
-  if (l.rate === 0) return 'без процентов';
-  if (now <= l.due) return `без % до ${shortDate(l.due - 1)}, потом ${ratePercent(l.rate)}/день`;
-  return `${ratePercent(l.rate)}/день с ${shortDate(l.due)}${l.interest > 0 ? `, набежало ${money(l.interest)}` : ''}`;
+  if (!l.apr && !l.rate) return 'без процентов';
+  if (now < l.due) return `без % до ${shortDate(l.due - 1)}${l.risk ? `, иначе набежит ${money(l.risk)}` : ''}`;
+  return `${rateText(l)}${l.interest > 0 ? `, набежало ${money(l.interest)}` : ''}`;
 }
 
 /** «Я должен» — долги, где я подключённый друг → [text, markup]. */

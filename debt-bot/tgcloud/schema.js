@@ -4,8 +4,8 @@ import { integer, sql, table, text, uniqueIndex } from 'sdk/db';
 
 // Люди, которые писали боту. pending — чего бот ждёт от человека следующим сообщением
 // ({ kind: 'part' | 'more', friendId }) — например, суммы частичного возврата.
-// graceDays, rate — условия новых займов этого человека: дней без процентов и сотые процента в день
-// (пусто — DEFAULT_TERMS из lib/loans.js).
+// graceDays, apr — условия новых займов этого человека: дней без процентов и сотые процента годовых
+// (пусто — DEFAULT_TERMS из lib/loans.js). rate — старое (процент в день), больше не используется.
 export const users = table('users', {
   userId: integer('user_id').primaryKey(),
   name: text('name').notNull(),
@@ -13,6 +13,7 @@ export const users = table('users', {
   pending: text('pending', { mode: 'json' }),
   graceDays: integer('grace_days'),
   rate: integer('rate'),
+  apr: integer('apr'),
   created: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
 });
 
@@ -33,7 +34,8 @@ export const friends = table('friends', {
 }));
 
 // Записи: kind 'lend' — дал в долг, 'return' — вернули. amount — в копейках. at — unix-секунды.
-// У займа ('lend'): due — до какого момента без процентов (unix), rate — сотые процента в день после.
+// У займа ('lend'): due — конец беспроцентного периода (unix), apr — сотые процента годовых
+// (не вернули всё к due — проценты за весь срок, см. lib/loans.js). rate — у старых займов: сотые процента в день после due.
 export const ops = table('ops', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   ownerId: integer('owner_id').notNull(),
@@ -44,4 +46,5 @@ export const ops = table('ops', {
   at: integer('at').notNull(),
   due: integer('due'),
   rate: integer('rate'),
+  apr: integer('apr'),
 });

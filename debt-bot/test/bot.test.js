@@ -98,7 +98,7 @@ test('дал, ещё дал, вернул часть, вернул всё', asyn
   const me = user(1, 'Маша');
   assert.match((await say(me, BUTTONS.list))[0].text, /Тетрадка пустая/);
 
-  assert.match((await say(me, 'петя 500 пицца'))[0].text, /Записал: Петя — 500 ₽ \(пицца\)\n⏳ без процентов до 09\.12, потом 1% в день\nВсего должен\(а\): <b>500 ₽<\/b>/);
+  assert.match((await say(me, 'петя 500 пицца'))[0].text, /Записал: Петя — 500 ₽ \(пицца\)\n⏳ без процентов до 03\.01; не вернёт всё к этому дню — 61,9% годовых за весь срок\nВсего должен\(а\): <b>500 ₽<\/b>/);
   assert.equal(friends()[0].name, 'Петя');
   assert.match((await say(me, 'Петя 1 500'))[0].text, /Всего должен\(а\): <b>2 000 ₽<\/b>/);
   assert.match((await say(me, 'Вася 300'))[0].text, /Вася — 300 ₽/);
@@ -152,7 +152,7 @@ test('друг подключается по ссылке, получает на
 
   // новая запись — друг узнаёт
   const more = await say(me, 'Петя 200 кофе');
-  assert.match(more.find((x) => x.chatId === 2).text, /Маша записал\(а\): ты взял\(а\) 200 ₽ \(кофе\)\.\n⏳ без процентов до 09\.12, потом 1% в день\nТы должен\(а\): <b>700 ₽/);
+  assert.match(more.find((x) => x.chatId === 2).text, /Маша записал\(а\): ты взял\(а\) 200 ₽ \(кофе\)\.\n⏳ без процентов до 03\.01; не вернёт всё к этому дню — 61,9% годовых за весь срок\nТы должен\(а\): <b>700 ₽/);
 
   const nudge = await press(me, 'nudge:1');
   const msg = nudge.find((x) => x.chatId === 2 && x.type === 'send');
@@ -188,7 +188,7 @@ test('в группах молчит, непонятное — подсказк�
   assert.match(r[0].text, /Не понял/);
 });
 
-test('проценты: после беспроцентного периода капает на остаток, возврат гасит сначала проценты', () => {
+test('старые займы (процент в день после срока): капает на остаток, возврат гасит сначала проценты', () => {
   const t0 = 1_800_000_000;
   const lend = (id, at, amount, days, rate = 100) => ({ id, kind: 'lend', amount, at, due: at + days * DAY, rate });
   const ret = (id, at, amount) => ({ id, kind: 'return', amount, at });
@@ -214,29 +214,53 @@ test('проценты: после беспроцентного периода �
   assert.equal(debtOf(over, t0 + 4 * DAY).total, 15000);
 });
 
+test('как у кредитки: вернул вовремя — 0%, не вернул — годовые за весь срок с первого дня', () => {
+  const t0 = 1_800_000_000;
+  const lend = (id, at, amount, days, apr = 3650) => ({ id, kind: 'lend', amount, at, due: at + days * DAY, apr }); // 36,5% = 0,1% в день
+  const ret = (id, at, amount) => ({ id, kind: 'return', amount, at });
+  // в льготном периоде процентов нет, но видно, сколько набежит, если не вернуть всё
+  const d0 = debtOf([lend(1, t0, 100000, 30)], t0 + 10 * DAY);
+  assert.deepEqual([d0.total, d0.perDay, d0.loans[0].risk], [100000, 0, 3000]);
+  // вернул всё на 29-й день — 0%
+  assert.equal(debtOf([lend(1, t0, 100000, 30), ret(2, t0 + 29 * DAY, 100000)], t0 + 100 * DAY).total, 0);
+  // не вернул к 30-му дню — проценты за все 30 дней сразу, потом капают дальше
+  const d1 = debtOf([lend(1, t0, 100000, 30)], t0 + 30 * DAY);
+  assert.deepEqual([d1.interest, d1.perDay], [3000, 100]);
+  assert.equal(debtOf([lend(1, t0, 100000, 30)], t0 + 40 * DAY).interest, 4000);
+  // вернул половину в льготный период — проценты задним числом на фактический остаток
+  const half = [lend(1, t0, 100000, 30), ret(2, t0 + 10 * DAY, 50000)];
+  assert.equal(debtOf(half, t0 + 30 * DAY).interest, 1000 + 1000); // 10 дн. × 1000 ₽ + 20 дн. × 500 ₽, 0,1% в день
+  // займы независимы: старый вернули вовремя, новый — нет
+  const two = [lend(1, t0, 100000, 30), lend(2, t0 + 5 * DAY, 100000, 30), ret(3, t0 + 20 * DAY, 100000)];
+  assert.equal(debtOf(two, t0 + 35 * DAY).interest, 3000); // только второй займ, 30 дн.
+});
+
 test('условия: /terms и на один займ', async () => {
   const { say, press, user, clock, ops } = setup();
   const me = user(1, 'Маша');
-  assert.match((await say(me, '/terms'))[0].text, /30 дн\. без процентов, потом 1% в день/);
-  assert.match((await say(me, '/terms 14 0,5'))[0].text, /14 дн\. без процентов, потом 0,5% в день/);
+  assert.match((await say(me, '/terms'))[0].text, /до 55 дн\. без процентов, потом 61,9% годовых за весь срок/);
+  assert.match((await say(me, '/terms 14 36,5'))[0].text, /до 14 дн\. без процентов, потом 36,5% годовых/);
   assert.match((await say(me, '/terms 999 1'))[0].text, /Не понял/);
-  assert.match((await say(me, 'Петя 1000'))[0].text, /без процентов до 23\.11, потом 0,5% в день/);
+  assert.match((await say(me, 'Петя 1000'))[0].text, /без процентов до 23\.11; не вернёт всё к этому дню — 36,5% годовых за весь срок/);
   assert.match((await say(me, 'Вася 1000 на неделю'))[0].text, /без процентов до 16\.11/);
   assert.match((await say(me, 'Коля 1000 до 25.11 кино'))[0].text, /Коля — 1 000 ₽ \(кино\)\n⏳ без процентов до 25\.11/);
   assert.match((await say(me, 'Лена 1000 без процентов'))[0].text, /⏳ без процентов\n/);
-  assert.equal(ops().find((o) => o.friendId === 1).rate, 50);
+  assert.equal(ops().find((o) => o.friendId === 1).apr, 3650);
 
-  // через 24 дня у Пети 10 дней просрочки: 0,5% × 1000 ₽ × 10 = 50 ₽
+  // в льготный период — видно, сколько набежит
+  const early = (await press(me, 'f:1')).find((x) => x.type === 'edit');
+  assert.match(early.text, /без процентов до 23\.11 — не вернёт всё к этому дню, набежит 14 ₽ \(36,5% годовых\)/);
+
+  // через 24 дня Петя не вернул: 0,1% в день × 24 дня с первого дня = 24 ₽
   clock.now += 24 * DAY;
   const card = (await press(me, 'f:1')).find((x) => x.type === 'edit');
-  assert.match(card.text, /Должен\(а\): <b>1 050 ₽ \(в т\.ч\. проценты 50 ₽\)<\/b>/);
-  assert.match(card.text, /капает 5 ₽ в день/);
-  assert.match(card.text, /• 1 000 ₽ от 09\.11 — 0,5%\/день с 23\.11, набежало 50 ₽/);
+  assert.match(card.text, /Должен\(а\): <b>1 024 ₽ \(в т\.ч\. проценты 24 ₽\)<\/b>/);
+  assert.match(card.text, /капает 1 ₽ в день/);
+  assert.match(card.text, /• 1 000 ₽ от 09\.11 — 36,5% годовых, набежало 24 ₽/);
   const list = (await say(me, BUTTONS.list))[0].text;
-  assert.match(list, /из них проценты: 172,50 ₽/); // Петя 50 + Вася 85 (17 дн.) + Коля 37,50 (7,5 дн.)
-  assert.match(list, /• Петя — 1 050 ₽ ⚠️ \+5 ₽\/день/);
-  // «вернул всё» — с процентами
-  assert.match((await say(me, 'Петя вернул'))[0].text, /вернул\(а\) 1 050 ₽\n🎉 Долг закрыт!/);
+  assert.match(list, /из них проценты: 72 ₽/); // Петя, Вася, Коля — по 24 ₽ (по 24 дня), Лена — без процентов
+  assert.match(list, /• Петя — 1 024 ₽ ⚠️ \+1 ₽\/день/);
+  assert.match((await say(me, 'Петя вернул'))[0].text, /вернул\(а\) 1 024 ₽\n🎉 Долг закрыт!/);
 });
 
 test('приложение: дать, вернуть, условия, напомнить, «я вернул»', async () => {
@@ -244,13 +268,13 @@ test('приложение: дать, вернуть, условия, напом
   const me = user(1, 'Маша');
   const petya = user(2, 'Петя');
   let st = await api(me, 'state');
-  assert.deepEqual(st.terms, { graceDays: 30, rate: 100 });
+  assert.deepEqual(st.terms, { graceDays: 55, apr: 6190 });
   assert.equal(st.friends.length, 0);
 
   st = await api(me, 'lend', { name: ' петя ', amount: 100000, note: 'кино', terms: { days: 14 } });
   assert.equal(st.friends[0].name, 'Петя');
   const op = st.friends[0].ops[0];
-  assert.deepEqual([op.amount, op.note, op.due - op.at, op.rate], [100000, 'кино', 14 * DAY, 100]);
+  assert.deepEqual([op.amount, op.note, op.due - op.at, op.apr], [100000, 'кино', 14 * DAY, 6190]);
   assert.equal(out.length, 0); // из приложения владельцу в чат не пишем
   assert.match(st.friends[0].link, /^https:\/\/t\.me\/dolg_bot\?start=f_tok1$/);
 
@@ -258,16 +282,16 @@ test('приложение: дать, вернуть, условия, напом
   st = await api(me, 'lend', { name: 'Петя', amount: 5000, terms: { until: '25.11' } });
   st = await api(me, 'lend', { friendId: 1, amount: 5000, terms: { free: true } });
   assert.equal(st.friends.length, 1);
-  assert.equal(st.friends[0].ops[2].rate, 0);
+  assert.equal(st.friends[0].ops[2].apr, 0);
   await assert.rejects(api(me, 'lend', { name: 'Петя', amount: -5 }), ApiError);
   await assert.rejects(api(me, 'lend', { name: 'Петя', amount: 100, terms: { until: '31.02' } }), /Неверная дата/);
 
   st = await api(me, 'repay', { friendId: 1, amount: 10000 });
   assert.equal(debtOf(st.friends[0].ops, clock.now).total, 100000);
 
-  st = await api(me, 'setTerms', { graceDays: 7, rate: 50 });
-  assert.deepEqual(st.terms, { graceDays: 7, rate: 50 });
-  await assert.rejects(api(me, 'setTerms', { graceDays: 7, rate: 5000 }), ApiError);
+  st = await api(me, 'setTerms', { graceDays: 7, apr: 3650 });
+  assert.deepEqual(st.terms, { graceDays: 7, apr: 3650 });
+  await assert.rejects(api(me, 'setTerms', { graceDays: 7, apr: 200000 }), ApiError);
 
   // напомнить без подключения → ссылка; после подключения — сообщение другу
   assert.deepEqual(await api(me, 'nudge', { friendId: 1 }), { sent: false, link: 'https://t.me/dolg_bot?start=f_tok1' });

@@ -10,8 +10,8 @@ export const store = {
     await db.insert(users).values({ userId, name, username })
       .onConflictDoUpdate({ target: users.userId, set: { name, username } }).run();
   },
-  async setTerms(userId, { graceDays, rate }) {
-    await db.update(users).set({ graceDays, rate }).where(eq(users.userId, userId)).run();
+  async setTerms(userId, { graceDays, apr }) {
+    await db.update(users).set({ graceDays, apr }).where(eq(users.userId, userId)).run();
   },
   async setPending(userId, pending) {
     await db.update(users).set({ pending }).where(eq(users.userId, userId)).run();
@@ -37,8 +37,8 @@ export const store = {
 
   opsOf: (friendId) => db.select().from(ops).where(eq(ops.friendId, friendId)).orderBy(asc(ops.id)).all(),
   opsOfOwner: (ownerId) => db.select().from(ops).where(eq(ops.ownerId, ownerId)).all(),
-  async addOp({ ownerId, friendId, kind, amount, note, at, due = null, rate = null }) {
-    await db.insert(ops).values({ ownerId, friendId, kind, amount, note, at, due, rate }).run();
+  async addOp({ ownerId, friendId, kind, amount, note, at, due = null, apr = null }) {
+    await db.insert(ops).values({ ownerId, friendId, kind, amount, note, at, due, apr }).run();
   },
   /** Убрать последнюю запись друга → она или null. */
   async undoOp(friendId) {
