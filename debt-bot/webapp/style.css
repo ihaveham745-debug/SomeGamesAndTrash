@@ -1,0 +1,287 @@
+/* Тетрадка долгов: цвета — из темы Telegram, акцент — зелёный «денежный». */
+
+:root {
+  --bg: var(--tg-theme-secondary-bg-color, #f1f2f6);
+  --card: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #ffffff));
+  --text: var(--tg-theme-text-color, #111111);
+  --hint: var(--tg-theme-hint-color, #8a8f98);
+  --link: var(--tg-theme-link-color, #2481cc);
+  --sep: color-mix(in srgb, var(--hint) 22%, transparent);
+  --accent: #19a463;
+  --accent-text: #ffffff;
+  --warn: #e8590c;
+  --danger: var(--tg-theme-destructive-text-color, #e53935);
+  --radius: 16px;
+  --safe-bottom: max(env(safe-area-inset-bottom), var(--tg-safe-area-inset-bottom, 0px));
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 10px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.tabs {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--sep);
+}
+
+.tab {
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 4px;
+  background: transparent;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--hint);
+  transition: background 0.2s, color 0.2s;
+}
+
+.tab.on { background: var(--card); color: var(--text); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.icon-btn svg { width: 22px; height: 22px; fill: none; stroke: var(--text); stroke-width: 1.8; stroke-linecap: round; }
+
+main { padding: 4px 16px calc(96px + var(--safe-bottom)); }
+
+.loading, .empty { padding: 48px 12px; text-align: center; color: var(--hint); }
+.empty .big { font-size: 48px; margin-bottom: 8px; }
+.empty b { display: block; color: var(--text); font-size: 18px; margin-bottom: 4px; }
+
+/* --- Итог --- */
+
+.summary {
+  margin: 6px 0 18px;
+  padding: 20px;
+  border-radius: 22px;
+  color: #fff;
+  background: linear-gradient(135deg, #12b76a, #0b7a50);
+  box-shadow: 0 8px 24px rgba(16, 140, 90, 0.28);
+}
+
+.summary.mine { background: linear-gradient(135deg, #f0803c, #c2410c); box-shadow: 0 8px 24px rgba(194, 65, 12, 0.25); }
+.summary .label { font-size: 14px; opacity: 0.85; }
+.summary .total { font-size: 38px; font-weight: 800; letter-spacing: -0.5px; margin: 2px 0 6px; }
+.summary .sub { font-size: 14px; opacity: 0.9; }
+
+.section-title { margin: 18px 4px 8px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--hint); }
+
+/* --- Список --- */
+
+.list { border-radius: var(--radius); background: var(--card); overflow: hidden; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.row + .row { border-top: 0.5px solid var(--sep); }
+.row:active { background: var(--sep); }
+
+.avatar {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.row .main { flex: 1; min-width: 0; }
+.row .name { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .status { display: block; font-size: 13px; color: var(--hint); }
+.row .status.warn { color: var(--warn); }
+.row .amount { font-weight: 700; white-space: nowrap; }
+.row .amount.warn { color: var(--warn); }
+.row .amount.done { color: var(--hint); font-weight: 500; }
+
+/* --- Карточка друга --- */
+
+.friend-head { text-align: center; padding: 8px 0 16px; }
+.friend-head .avatar { width: 72px; height: 72px; font-size: 28px; margin: 0 auto 10px; }
+.friend-head h2 { margin: 0; font-size: 22px; }
+.friend-head .total { font-size: 34px; font-weight: 800; margin-top: 6px; }
+.friend-head .interest { font-size: 14px; color: var(--hint); }
+.friend-head .badge { display: inline-block; margin-top: 10px; padding: 5px 12px; border-radius: 999px; font-size: 13px; background: var(--sep); }
+.friend-head .badge.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.friend-head .badge.ok { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+
+.actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+
+.action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 4px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--card);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.action .ic { font-size: 22px; }
+.action:active { transform: scale(0.96); }
+.action:disabled { opacity: 0.4; }
+
+.item { padding: 11px 14px; font-size: 15px; }
+.item + .item { border-top: 0.5px solid var(--sep); }
+.item .line { display: flex; justify-content: space-between; gap: 10px; }
+.item .meta { font-size: 13px; color: var(--hint); }
+.item .meta.warn { color: var(--warn); }
+.item .plus { color: var(--text); font-weight: 600; }
+.item .minus { color: var(--accent); font-weight: 600; }
+
+.danger-link { display: block; margin: 22px auto 0; border: 0; background: none; color: var(--danger); font-size: 15px; }
+
+/* --- Нижняя кнопка --- */
+
+.bottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px 16px calc(10px + var(--safe-bottom));
+  background: linear-gradient(transparent, var(--bg) 30%);
+}
+
+.btn {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.btn.secondary { background: var(--sep); color: var(--text); }
+.btn:active { opacity: 0.85; }
+.btn:disabled { opacity: 0.5; }
+
+/* --- Шторки --- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.4);
+  animation: fade 0.2s;
+}
+
+.sheet {
+  width: 100%;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 10px 16px calc(16px + var(--safe-bottom));
+  border-radius: 22px 22px 0 0;
+  background: var(--bg);
+  animation: up 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+
+.sheet .grab { width: 38px; height: 5px; margin: 0 auto 12px; border-radius: 3px; background: var(--sep); }
+.sheet h3 { margin: 0 0 14px; font-size: 20px; text-align: center; }
+
+.field { display: block; margin-bottom: 12px; }
+.field > span { display: block; margin: 0 4px 6px; font-size: 13px; color: var(--hint); }
+
+.input {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  background: var(--card);
+  outline: none;
+  font-size: 17px;
+}
+
+.input:focus { border-color: var(--accent); }
+.input.amount { font-size: 28px; font-weight: 700; text-align: center; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.chip {
+  padding: 7px 12px;
+  border: 1.5px solid transparent;
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 14px;
+}
+
+.chip.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+.preview { margin: 4px 4px 14px; font-size: 14px; color: var(--hint); }
+.error { min-height: 18px; margin: 0 4px 8px; font-size: 14px; color: var(--danger); }
+.row-btns { display: flex; gap: 8px; }
+.row-btns .btn { flex: 1; }
+.hint-text { margin: 10px 4px 0; font-size: 13px; color: var(--hint); }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  top: 70px;
+  z-index: 30;
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(30, 30, 30, 0.92);
+  color: #fff;
+  font-size: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -10px);
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@keyframes fade { from { opacity: 0; } }
+@keyframes up { from { transform: translateY(100%); } }

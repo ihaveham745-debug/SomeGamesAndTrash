@@ -18,6 +18,7 @@ const env = { ...process.env, TGCLOUD_TOKEN: token, TGCLOUD_NO_PAGER: '1' };
 const run = (...args) => execFileSync('npx', ['tgcloud', ...args], { stdio: 'inherit', env });
 
 if (!existsSync(new URL('../.tgcloud/state.json', import.meta.url))) run('fetch');
+execFileSync('node', [new URL('./build.mjs', import.meta.url).pathname], { stdio: 'inherit' });
 // tgcloud иногда падает уже после загрузки (пишет в свой снимок false вместо текста модуля).
 // Тогда сверяемся с сервером: если загружать больше нечего — всё выложилось, идём дальше.
 try {

@@ -65,17 +65,17 @@ export function userName(user) {
   return [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim() || (user?.username ? `@${user.username}` : 'Кто-то');
 }
 
-const nameKey = (name) => name.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
-const cleanName = (name) => name.trim().replace(/\s+/g, ' ').replace(/^./, (c) => c.toUpperCase());
-const friendLink = (deps, f) => `https://t.me/${deps.botUsername}?start=f_${f.token}`;
+export const nameKey = (name) => name.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
+export const cleanName = (name) => name.trim().replace(/\s+/g, ' ').replace(/^./, (c) => c.toUpperCase());
+export const friendLink = (deps, f) => `https://t.me/${deps.botUsername}?start=f_${f.token}`;
 
 /** Долг друга сейчас (см. lib/loans.js). */
-const owed = async (deps, friendId) => debtOf(await deps.store.opsOf(friendId), deps.now());
+export const owed = async (deps, friendId) => debtOf(await deps.store.opsOf(friendId), deps.now());
 
-const userTerms = (me) => ({ graceDays: me?.graceDays ?? DEFAULT_TERMS.graceDays, rate: me?.rate ?? DEFAULT_TERMS.rate });
+export const userTerms = (me) => ({ graceDays: me?.graceDays ?? DEFAULT_TERMS.graceDays, rate: me?.rate ?? DEFAULT_TERMS.rate });
 
 /** Условия нового займа: из записи («на 14 дней», «до 25.11», «без процентов») или общие. */
-function loanTerms(me, terms, now) {
+export function loanTerms(me, terms, now) {
   const base = userTerms(me);
   const rate = terms?.free ? 0 : base.rate;
   const until = terms?.until ? untilToUnix(terms.until, now) : null;
@@ -115,7 +115,10 @@ export async function handleMessage(message, deps) {
   if (cmd === 'start') {
     await deps.store.setPending(user.id, null);
     await deps.tg.setup?.();
-    return deps.tg.send(chat.id, `👋 Привет! Я тетрадка долгов.\n\n${HELP_TEXT}`, KEYBOARD);
+    await deps.tg.send(chat.id, `👋 Привет! Я тетрадка долгов.\n\n${HELP_TEXT}`, KEYBOARD);
+    return deps.miniAppUrl ? deps.tg.send(chat.id, '📱 Всё то же — удобнее — в приложении: кнопка «Тетрадка» слева от поля ввода или здесь 👇', {
+      inline_keyboard: [[{ text: '📱 Открыть приложение', web_app: { url: deps.miniAppUrl } }]],
+    }) : undefined;
   }
   if (cmd === 'help' || text === BUTTONS.help) return deps.tg.send(chat.id, HELP_TEXT, KEYBOARD);
   if (cmd === 'list' || text === BUTTONS.list) {
@@ -182,7 +185,8 @@ async function termsCommand(chatId, userId, me, args, deps) {
 }
 
 /** Записать выдачу/возврат, ответить владельцу и сообщить подключённому другу. */
-async function record(chatId, owner, friend, kind, amount, note, deps, terms = null) {
+/** quiet — не писать владельцу в чат (запись из приложения). */
+export async function record(chatId, owner, friend, kind, amount, note, deps, terms = null, quiet = false) {
   await deps.store.addOp({ ownerId: owner.id, friendId: friend.id, kind, amount, note: note || null, at: deps.now(), ...terms });
   const d = await owed(deps, friend.id);
   const balance = d.total;
@@ -191,9 +195,11 @@ async function record(chatId, owner, friend, kind, amount, note, deps, terms = n
     ? `➕ Записал: ${esc(friend.name)} — ${money(amount)}${note ? ` (${esc(note)})` : ''}${loanTermsText}`
     : `↩️ ${esc(friend.name)} вернул(а) ${money(amount)}`;
   const total = balance > 0 ? `Всего должен(а): <b>${totalText(d)}</b>` : balance < 0 ? `Переплата: ${money(-balance)} — теперь ты должен(а) ${esc(friend.name)}` : '🎉 Долг закрыт!';
-  await deps.tg.send(chatId, `${what}\n${total}`, {
-    inline_keyboard: [[{ text: `📒 ${friend.name}`, callback_data: `f:${friend.id}` }, { text: '↩️ Отменить', callback_data: `undo:${friend.id}` }]],
-  });
+  if (!quiet) {
+    await deps.tg.send(chatId, `${what}\n${total}`, {
+      inline_keyboard: [[{ text: `📒 ${friend.name}`, callback_data: `f:${friend.id}` }, { text: '↩️ Отменить', callback_data: `undo:${friend.id}` }]],
+    });
+  }
   if (friend.linkedUserId) {
     const ownerName = esc(userName(owner));
     const msg = kind === 'lend'
@@ -384,11 +390,7 @@ export async function handleCallback(query, deps) {
       await answer();
       return deps.tg.send(chatId, `🔔 ${esc(friend.name)} ещё не подключён(а) к боту — напомнить сам я не могу. Перешли ему/ей ссылку, и дальше напоминания будут приходить:\n${friendLink(deps, friend)}\n\nИли просто перешли это:\n<i>Привет! Напоминаю про долг ${money(balance)} 🙂</i>`);
     }
-    const d = await owed(deps, id);
-    const status = statusLine(d, deps.now());
-    await deps.tg.send(friend.linkedUserId, `🔔 ${esc(userName(user))} напоминает: ты должен(а) <b>${totalText(d)}</b>.${status ? `\n${status}` : ''}`, {
-      inline_keyboard: [[{ text: `💸 Я вернул(а) ${money(balance)}`, callback_data: `paid:${id}` }]],
-    });
+    await nudgeFriend(friend, user, deps);
     return answer(`Напомнил ${friend.name}`);
   }
   if (action === 'del') {
@@ -405,17 +407,33 @@ export async function handleCallback(query, deps) {
   return answer();
 }
 
-/** Друг нажал «я вернул» — спрашиваем владельца. */
-async function paidAction(friend, user, answer, edit, deps) {
-  if (friend.linkedUserId !== user.id) return answer('Это не твой долг', true);
+/** Напоминание подключённому другу (с кнопкой «я вернул»). */
+export async function nudgeFriend(friend, owner, deps) {
+  const d = await owed(deps, friend.id);
+  const status = statusLine(d, deps.now());
+  await deps.tg.send(friend.linkedUserId, `🔔 ${esc(userName(owner))} напоминает: ты должен(а) <b>${totalText(d)}</b>.${status ? `\n${status}` : ''}`, {
+    inline_keyboard: [[{ text: `💸 Я вернул(а) ${money(d.total)}`, callback_data: `paid:${friend.id}` }]],
+  });
+}
+
+/** Друг говорит, что вернул всё → спрашиваем владельца. Возвращает сумму или 0, если долга нет. */
+export async function askPaid(friend, deps) {
   const balance = (await owed(deps, friend.id)).total;
-  if (balance <= 0) return answer('Ты уже ничего не должен(а) 🎉', true);
+  if (balance <= 0) return 0;
   await deps.tg.send(friend.ownerId, `💸 ${esc(friend.name)} говорит, что вернул(а) <b>${money(balance)}</b>. Подтвердить?`, {
     inline_keyboard: [[
       { text: '✅ Да, вернул(а)', callback_data: `ok:${friend.id}:${balance}` },
       { text: '❌ Нет', callback_data: `nope:${friend.id}:${balance}` },
     ]],
   });
+  return balance;
+}
+
+/** Друг нажал «я вернул» — спрашиваем владельца. */
+async function paidAction(friend, user, answer, edit, deps) {
+  if (friend.linkedUserId !== user.id) return answer('Это не твой долг', true);
+  const balance = await askPaid(friend, deps);
+  if (balance <= 0) return answer('Ты уже ничего не должен(а) 🎉', true);
   await answer('Спросил — как подтвердит, напишу');
   return edit(`⏳ Спросил, подтвердит ли возврат ${money(balance)}. Как ответит — напишу.`);
 }

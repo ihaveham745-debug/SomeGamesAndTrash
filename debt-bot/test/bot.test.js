@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { ApiError, apiCall } from '../tgcloud/lib/api.js';
 import { BUTTONS, handleCallback, handleMessage } from '../tgcloud/lib/app.js';
 import { DAY, debtOf } from '../tgcloud/lib/loans.js';
 import { money, parseAmount, parseEntry, shortDate } from '../tgcloud/lib/money.js';
@@ -86,7 +87,8 @@ function setup() {
     await handleCallback({ id: 'q', from, data, message: { chat: { id: from.id }, message_id: 5 } }, deps);
     return out.slice();
   };
-  return { store, user, say, press, clock, ops: () => ops, friends: () => friends };
+  const api = (from, name, input = {}) => { out.length = 0; return apiCall(name, input, from, deps); };
+  return { store, user, say, press, clock, api, out, ops: () => ops, friends: () => friends };
 }
 
 const buttons = (markup) => (markup?.inline_keyboard ?? []).flat().map((b) => b.callback_data);
@@ -199,6 +201,10 @@ test('проценты: после беспроцентного периода �
   ops.push(ret(2, t0 + 40 * DAY, 30000));
   const d2 = debtOf(ops, t0 + 50 * DAY);
   assert.deepEqual([d2.principal, d2.interest, d2.total], [80000, 8000, 88000]);
+  // возврат посреди дня просрочки — долг остаётся в целых копейках
+  const odd = [lend(1, t0, 150000, 30), ret(2, t0 + 40 * DAY + 3333, 50000)];
+  const d3 = debtOf(odd, t0 + 41 * DAY + 777);
+  assert.ok(Number.isInteger(d3.principal) && Number.isInteger(d3.total), JSON.stringify(d3));
   // без процентов — не капает никогда
   assert.equal(debtOf([lend(1, t0, 50000, 0, 0)], t0 + 400 * DAY).total, 50000);
   // переплата — минус, и зачитывается в следующий займ
@@ -231,4 +237,61 @@ test('условия: /terms и на один займ', async () => {
   assert.match(list, /• Петя — 1 050 ₽ ⚠️ \+5 ₽\/день/);
   // «вернул всё» — с процентами
   assert.match((await say(me, 'Петя вернул'))[0].text, /вернул\(а\) 1 050 ₽\n🎉 Долг закрыт!/);
+});
+
+test('приложение: дать, вернуть, условия, напомнить, «я вернул»', async () => {
+  const { api, out, user, clock, say } = setup();
+  const me = user(1, 'Маша');
+  const petya = user(2, 'Петя');
+  let st = await api(me, 'state');
+  assert.deepEqual(st.terms, { graceDays: 30, rate: 100 });
+  assert.equal(st.friends.length, 0);
+
+  st = await api(me, 'lend', { name: ' петя ', amount: 100000, note: 'кино', terms: { days: 14 } });
+  assert.equal(st.friends[0].name, 'Петя');
+  const op = st.friends[0].ops[0];
+  assert.deepEqual([op.amount, op.note, op.due - op.at, op.rate], [100000, 'кино', 14 * DAY, 100]);
+  assert.equal(out.length, 0); // из приложения владельцу в чат не пишем
+  assert.match(st.friends[0].link, /^https:\/\/t\.me\/dolg_bot\?start=f_tok1$/);
+
+  // тот же друг по имени, «до даты», без процентов
+  st = await api(me, 'lend', { name: 'Петя', amount: 5000, terms: { until: '25.11' } });
+  st = await api(me, 'lend', { friendId: 1, amount: 5000, terms: { free: true } });
+  assert.equal(st.friends.length, 1);
+  assert.equal(st.friends[0].ops[2].rate, 0);
+  await assert.rejects(api(me, 'lend', { name: 'Петя', amount: -5 }), ApiError);
+  await assert.rejects(api(me, 'lend', { name: 'Петя', amount: 100, terms: { until: '31.02' } }), /Неверная дата/);
+
+  st = await api(me, 'repay', { friendId: 1, amount: 10000 });
+  assert.equal(debtOf(st.friends[0].ops, clock.now).total, 100000);
+
+  st = await api(me, 'setTerms', { graceDays: 7, rate: 50 });
+  assert.deepEqual(st.terms, { graceDays: 7, rate: 50 });
+  await assert.rejects(api(me, 'setTerms', { graceDays: 7, rate: 5000 }), ApiError);
+
+  // напомнить без подключения → ссылка; после подключения — сообщение другу
+  assert.deepEqual(await api(me, 'nudge', { friendId: 1 }), { sent: false, link: 'https://t.me/dolg_bot?start=f_tok1' });
+  await say(petya, '/start f_tok1');
+  assert.deepEqual(await api(me, 'nudge', { friendId: 1 }), { sent: true });
+  assert.match(out.find((x) => x.chatId === 2).text, /Маша напоминает: ты должен\(а\) <b>1 000 ₽/);
+
+  // у Пети в приложении — «я должен»
+  const pst = await api(petya, 'state');
+  assert.equal(pst.mine[0].ownerName, 'Маша');
+  assert.equal(debtOf(pst.mine[0].ops, clock.now).total, 100000);
+  assert.deepEqual(await api(petya, 'paid', { friendId: 1 }), { asked: 100000 });
+  assert.deepEqual(out.find((x) => x.chatId === 1).markup.inline_keyboard[0].map((b) => b.callback_data), ['ok:1:100000', 'nope:1:100000']);
+
+  // чужое — нельзя
+  await assert.rejects(api(petya, 'repay', { friendId: 1 }), /нет/);
+  await assert.rejects(api(user(3, 'Вася'), 'paid', { friendId: 1 }), /не твой/);
+
+  // вернул всё (amount не задан) → долг закрыт; undo; удалить
+  st = await api(me, 'repay', { friendId: 1 });
+  assert.equal(debtOf(st.friends[0].ops, clock.now).total, 0);
+  st = await api(me, 'undo', { friendId: 1 });
+  assert.equal(debtOf(st.friends[0].ops, clock.now).total, 100000);
+  st = await api(me, 'removeFriend', { friendId: 1 });
+  assert.equal(st.friends.length, 0);
+  await assert.rejects(api(me, 'nope'), /Неизвестное/);
 });

@@ -5,6 +5,9 @@ import { BotApiError, api } from 'sdk';
 import { COMMANDS, DESCRIPTION, SHORT_DESCRIPTION } from './app.js';
 import { store } from './store.js';
 
+// Mini App (папка webapp/, собирается в dist/).
+export const MINI_APP_URL = 'https://app9015719001.tgcloud.ai/';
+
 async function quiet(promise) {
   try {
     return await promise;
@@ -26,6 +29,7 @@ export const tg = {
     api.setMyCommands({ commands: COMMANDS }),
     api.setMyDescription({ description: DESCRIPTION }),
     api.setMyShortDescription({ short_description: SHORT_DESCRIPTION }),
+    api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Тетрадка', web_app: { url: MINI_APP_URL } } }),
   ]),
 };
 
@@ -41,5 +45,5 @@ let username = null;
 /** deps для одного обновления: имя бота (для ссылок) берём один раз. */
 export async function makeDeps() {
   if (!username) username = (await api.getMe()).username;
-  return { store, tg, botUsername: username, now: () => Math.floor(Date.now() / 1000), token };
+  return { store, tg, botUsername: username, miniAppUrl: MINI_APP_URL, now: () => Math.floor(Date.now() / 1000), token };
 }

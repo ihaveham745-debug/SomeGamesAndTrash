@@ -1,6 +1,7 @@
 # debt-bot — тетрадка долгов
 
-Telegram-бот на Telegram Serverless: записываешь, кому дал в долг, бот считает, кто сколько должен.
+Telegram-бот на Telegram Serverless (@Sell_ur_soul_to_me_bot): записываешь, кому дал в долг, бот считает, кто сколько должен.
+Всё то же — в Mini App (кнопка «Тетрадка» у поля ввода): https://app9015719001.tgcloud.ai/
 
 ## Как пользоваться
 
@@ -20,6 +21,15 @@ Telegram-бот на Telegram Serverless: записываешь, кому да�
 
 Тетрадка у каждого своя: бот работает только в личке, чужие записи не видны.
 
+## Mini App
+
+Вкладки «Мне должны» (итог, проценты, кто сколько, «＋ Дать в долг») и «Я должен» (долги, где ты подключённый друг,
+кнопка «я вернул»). Карточка друга: займы с условиями, история, «вернул всё / часть», «дал ещё», «напомнить»,
+«ссылка», «отменить», «удалить». Шторка «Условия займов» — то же, что `/terms`.
+
+Приложение говорит с ботом через эндпоинты (`tgcloud/endpoints/*` → `lib/api.js`), долг с процентами считает
+тем же `lib/loans.js`, что и бот (`scripts/build.mjs` копирует его в `dist/lib/`).
+
 ## Код
 
 ```
@@ -29,9 +39,13 @@ tgcloud/
   lib/loans.js       — долг с беспроцентным периодом и процентами
   lib/app.js         — вся логика: сообщения, кнопки, тексты (без sdk — проверяется тестами)
   lib/store.js       — база
+  lib/api.js         — действия Mini App (state, lend, repay, undo, removeFriend, setTerms, nudge, paid)
+  lib/endpoint.js    — обёртка эндпоинтов
   lib/telegram.js    — связка с sdk
+  endpoints/*.js     — POST /api/<действие>
   handlers/message.js, handlers/callback_query.js
-test/bot.test.js     — разбор записей и сценарии на базе в памяти
+test/bot.test.js     — разбор записей, проценты, сценарии бота и приложения на базе в памяти
+webapp/              — Mini App (собирается в dist/)
 ```
 
-`npm test` — тесты, `npm run deploy` — выложить (ключ `app…:…` в `.tgcloud/credentials`, не в git).
+`npm test` — тесты, `npm run deploy` — собрать приложение и выложить (ключ `app…:…` в `.tgcloud/credentials`, не в git).

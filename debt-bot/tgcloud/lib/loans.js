@@ -47,6 +47,8 @@ export function debtOf(ops, now) {
       loans.push(loan);
     } else {
       let pay = op.amount;
+      // проценты копятся с долями копейки — к моменту возврата округляем, чтобы долг остался в целых копейках
+      for (const l of loans) l.interest = Math.round(l.interest);
       for (const l of loans) { // сначала проценты
         const p = Math.min(pay, l.interest);
         l.interest -= p;
