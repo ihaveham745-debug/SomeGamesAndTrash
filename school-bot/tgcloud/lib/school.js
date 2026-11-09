@@ -20,8 +20,12 @@ export const YEAR_END = '2027-05-31';
 // Якутск: UTC+9, без перехода на летнее время.
 export const UTC_OFFSET_HOURS = 9;
 
-// I смена.
-export const BELLS = {
+// Временное расписание (ноябрь 2026): уроки по 35 минут и свои кабинеты — TEMP_ROWS, TEMP_BELLS ниже.
+// Когда вернут обычное — поставь TEMPORARY = false.
+export const TEMPORARY = true;
+
+// I смена, обычные звонки.
+const REGULAR_BELLS = {
   1: '08:00–08:40',
   2: '08:50–09:30',
   3: '09:40–10:20',
@@ -85,7 +89,7 @@ const S = (...cells) => Object.fromEntries(
 );
 const row = (n, ...parts) => ({ n, ...Object.assign({}, ...parts) });
 
-export const ROWS = {
+const REGULAR_ROWS = {
   1: [
     row(1, S([SOC, '113'], [EN, '207'], [EN, '114'], [SOC, '113'])),
     row(2, S([SOC, '113'], [EN, '207'], [CHEM, '210'], [SOC, '113'])),
@@ -133,6 +137,70 @@ export const ROWS = {
     row(7, S(null, [PHYS, '213']), P('en gum', PROB, '112')),
   ],
 };
+
+// --- Временное расписание (фото «Расписание уроков I смена», ноябрь 2026) ---
+
+const TEMP_BELLS = {
+  1: '08:00–08:35',
+  2: '08:45–09:20',
+  3: '09:30–10:05',
+  4: '10:15–10:50',
+  5: '11:00–11:35',
+  6: '11:45–12:20',
+  7: '12:30–13:05',
+};
+
+const TEMP_ROWS = {
+  1: [
+    row(1, S([SOC, '212'], [EN, '207'], [EN, '210'], [SOC, '212'])),
+    row(2, S([SOC, '212'], [EN, '207'], [CHEM, '210'], [SOC, '212'])),
+    row(3, S([EN, '207'], [INF, '208'], [BIO, '212'], [EN, '210'])),
+    row(4, S([EN, '207'], [INF, '208'], [BIO, '212'], [EN, '210'])),
+    row(5, A(TALKS, '210'), B(TALKS, '212')),
+    row(6, P('se tech', MATH, '115'), P('en gum', MATH, '212')),
+    row(7, P('se tech', MATH, '115'), P('en gum', MATH, '212')),
+  ],
+  2: [
+    row(1, P('se tech', MATH, '115'), S(null, null, [EN, '111'], [CHEM, '210', 'база'])),
+    row(2, S([INF, '208'], [PHYS, '210'], [EN, '111'], [BIO, '212', 'база'])),
+    row(3, S([INF, '208'], [PHYS, '210'], [BIO, '212'], [EN, '111'])),
+    row(4, A(PE, GYM), B(LIT, '212')),
+    row(5, A(PE, GYM), B(LIT, '212')),
+    row(6, A(LIT, '210'), B(PE, GYM)),
+    row(7, A(LIT, '210'), B(PE, GYM)),
+  ],
+  3: [
+    row(1, A(RU, '210'), B(HIST, '212')),
+    row(2, A(RU, '210'), B(HIST, '212')),
+    row(3, S(['общественная география', '212'], [PHYS, '210'], ['решение уравнений', '115'], [EN, '111'])),
+    row(4, S([EN, '207'], [PHYS, '210']), P('en gum', MATH, '212')),
+    row(5, P('se tech', MATH, '115'), P('en gum', MATH, '212')),
+    row(6, A(HIST, '210'), B(RU, '212')),
+    row(7, A(HIST, '210'), B(RU, '212')),
+  ],
+  4: [
+    row(1, A(HORIZONS, '210'), B(HORIZONS, '212')),
+    row(2, P('se tech', BIO, '212', 'база'), S(null, null, ['биохимия', '210'], ['введение в литературоведение', '111'])),
+    row(3, P('se tech', MATH, '115'), S(null, null, [CHEM, '210'], ['стилистика', '212'])),
+    row(4, P('se tech', MATH, '115'), S(null, null, [CHEM, '210'], [EN, '212'])),
+    row(5, P('se tech', PROB, '115'), P('en gum', OBZR, '212')),
+    row(6, A(GEO, '210'), B(LIT, '212')),
+    row(7, A(LIT, '210'), B(GEO, '212')),
+  ],
+  5: [
+    row(1, S([SOC, '210'], [INF, '208'], ['биофизика', '212'], [SOC, '210'])),
+    row(2, S([SOC, '210'], [INF, '208'], [INF, '208'], [SOC, '210'])),
+    row(3, P('se tech', CHEM, '210', 'база'), P('en gum', PHYS, '212', 'база')),
+    row(4, P('se tech', OBZR, '210'), P('en gum', PHYS, '212', 'база')),
+    // 5–6: обществознание — общая группа тех + ен
+    row(5, S([PHYS, '212', 'база'], null, null, [INF, '208']), P('tech en', SOC, '210')),
+    row(6, S([PHYS, '212', 'база'], null, null, ['деловой английский', '111']), P('tech en', SOC, '210')),
+    row(7, S(null, [PHYS, '210']), P('en gum', PROB, '212')),
+  ],
+};
+
+export const BELLS = TEMPORARY ? TEMP_BELLS : REGULAR_BELLS;
+export const ROWS = TEMPORARY ? TEMP_ROWS : REGULAR_ROWS;
 
 /**
  * TIMETABLE[вариант][день] — уроки: { n, group, subject, room, type? }.
